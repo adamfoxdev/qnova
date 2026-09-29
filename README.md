@@ -97,3 +97,13 @@ Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open
   and a self-kill reads `You suicided (Rocket Launcher)`.
 - **Cheats** (need `sv_cheats 1`): `giveall` (every weapon + full ammo, health untouched), `impulse 9` (same, Quake-style),
   and the existing `give all` (everything *and* full health).
+
+## Grappling hook and launchpads
+
+- **Grappling hook**: press **F** (rebindable, action `grapple`) to fire a fast hook along your view. It sticks to the first wall, floor or
+  ceiling it hits and reels you in at `sv_hookspeed` (default 800) for as long as you hold F; you hang against the anchor once you arrive.
+  **Release F to let go and keep your momentum**, which is how you slingshot. Range is `sv_hookrange` (1600). The hook doesn't grab players,
+  bots or dummies, and lets go if you die or get snagged on geometry and stop making progress. Press again after a brief cooldown.
+- **Launchpads** (Quake 3 style): glowing cyan plates. Step on one and you're flung along a ballistic arc whose *apex* is the pad's target
+  point (same formula as Q3's `trigger_push`), so it adapts to `sv_gravity`. The arena has four: up to the east ledge, over the stairs onto the
+  mesa, a long hop from the north wall onto the mesa, and back off the ledge. Bots get launched too.

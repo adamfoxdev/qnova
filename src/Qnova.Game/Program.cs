@@ -276,6 +276,7 @@ while (!quit && !Raylib.WindowShouldClose())
         cmd.Forward = (ActionDown(InputAction.Forward) ? 1 : 0) - (ActionDown(InputAction.Back) ? 1 : 0);
         cmd.Side = (ActionDown(InputAction.MoveRight) ? 1 : 0) - (ActionDown(InputAction.MoveLeft) ? 1 : 0);
         cmd.Jump = ActionDown(InputAction.Jump);
+        cmd.Grapple = ActionDown(InputAction.Grapple);
     }
 
     if (!paused) acc += Math.Min(Raylib.GetFrameTime(), 0.1f) * timescale;
@@ -307,6 +308,11 @@ while (!quit && !Raylib.WindowShouldClose())
                     dynLights.Add((e.A, new Vector3(3.0f, 1.6f, 0.7f), 1200f, (float)now, 0.55f));
                     effects.Add((e.A, (float)now + 0.35f, 120, Color.Orange)); break;
                 case EventKind.Pickup: Play(SoundSynth.ForPickup((PickupKind)e.Arg), e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.5f); break;
+                case EventKind.HookFire: Play(SoundId.HookFire, e.A, game.Player.Eye, e.Arg == 1 ? 0.9f : 0.5f); break;
+                case EventKind.HookAttach:
+                    Play(SoundId.HookHit, e.A, game.Player.Eye, e.Arg == 1 ? 1f : 0.5f);
+                    effects.Add((e.A, (float)now + 0.12f, 5, Color.White)); break;
+                case EventKind.JumpPad: Play(SoundId.JumpPad, e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.6f); break;
                 case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
                 case EventKind.Hurt when e.Arg == 1: hurtUntil = (float)now + 0.25f; break;
                 case EventKind.Impact: effects.Add((e.A, (float)now + 0.1f, 4, Color.Yellow)); break;
@@ -365,6 +371,15 @@ while (!quit && !Raylib.WindowShouldClose())
         if (t.Alive) MapRenderer.Box(Aabb.FromCenter(t.Origin, t.Half), Surface.Flat, new Color(190, 70 + t.Health, 60, 255));
     mapRenderer.End();
     float tnow = (float)Raylib.GetTime();
+    // launch pads: glowing chevrons rise off each plate
+    foreach (var pad in game.JumpPads)
+        for (int ci = 0; ci < 3; ci++)
+        {
+            float ph = (tnow * 0.9f + ci / 3f) % 1f;
+            var cpos = new Vector3(pad.Center.X, pad.Trigger.Min.Y + 8f + ph * 80f, pad.Center.Z);
+            float csz = (1.5f - ph) * 1.0f;
+            Raylib.DrawCubeV(R(cpos), new Vector3(csz, 0.08f, csz), Raylib.Fade(new Color(120, 225, 255, 255), 1f - ph));
+        }
     for (int i = 0; i < game.Pickups.Count; i++)
     {
         var k = game.Pickups[i];
@@ -398,6 +413,14 @@ while (!quit && !Raylib.WindowShouldClose())
         Raylib.DrawLine3D(R(bp.Eye), R(bp.Eye + look * 40f), Color.Red);   // gun barrel: shows where it is aiming
         Raylib.DrawCubeV(R(bp.Eye + look * 22f), new Vector3(0.12f, 0.12f, 0.12f) + Vector3.Abs(look) * 0.5f, new Color(40, 40, 40, 255));
     }
+    foreach (var hc in game.Combatants)   // grappling hooks: a rope from the hand to the tip
+    {
+        var hk = hc.Hook;
+        if (hk.State == HookState.None) continue;
+        var hand = hc.Eye + PlayerMove.RightFlat(hc.Yaw) * 10f + new Vector3(0, -9f, 0) + hc.Look * 12f;
+        Raylib.DrawCylinderEx(R(hand), R(hk.Pos), 0.014f, 0.014f, 4, new Color(205, 175, 120, 255));
+        Raylib.DrawCubeV(R(hk.Pos), new Vector3(0.16f, 0.16f, 0.16f), hk.State == HookState.Attached ? new Color(255, 200, 90, 255) : new Color(225, 225, 235, 255));
+    }
     foreach (var pr in game.Projectiles)
         Raylib.DrawSphere(R(pr.Pos), pr.Kind == ProjectileKind.Nail ? 0.05f : 0.15f, pr.Kind == ProjectileKind.Nail ? Color.Yellow : pr.Kind == ProjectileKind.Rocket ? Color.Red : Color.DarkGreen);
     foreach (var (pos, until, radius, color) in effects) Raylib.DrawSphere(R(pos), radius * S * (1 - (until - now2)), Raylib.Fade(color, 0.6f));
@@ -423,7 +446,7 @@ while (!quit && !Raylib.WindowShouldClose())
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
     Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
-    Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
+    Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.Grapple)} hook  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
     if (!p.Alive)
     {
         float left = Math.Max(0f, p.RespawnAt - game.Time);

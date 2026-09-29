@@ -40,6 +40,8 @@ public static class GameCommands
         c.AddCvar("sv_stopspeed", s.StopSpeed, "Speed below which friction is constant", v => s.StopSpeed = v);
         c.AddCvar("sv_jumpspeed", s.JumpSpeed, "Vertical speed of a jump", v => s.JumpSpeed = v);
         c.AddCvar("sv_stepheight", s.StepHeight, "Max ledge height walked up", v => s.StepHeight = v);
+        c.AddCvar("sv_hookspeed", s.HookSpeed, "Grappling hook reel-in speed", v => s.HookSpeed = Math.Max(0f, v));
+        c.AddCvar("sv_hookrange", g.HookRange, "Grappling hook maximum range", v => g.HookRange = Math.Max(0f, v));
         c.AddCvar("sv_autohop", 0, "Hold jump to keep bunny-hopping (0/1)", v => p.Move.AutoHop = v != 0);
 
         // ---- bots ----

@@ -22,6 +22,10 @@ public sealed class GameWorld
     public readonly List<Pickup> Pickups = new();
     public readonly List<DecorBox> Decor = new();      // visual only
     public readonly List<MapLight> Lights = new();
+    public readonly List<JumpPad> JumpPads = new();
+    public float HookRange = 1600f;       // sv_hookrange
+    const float HookFlightSpeed = 2600f;
+    const float PadRetrigger = 0.5f;
     public float PickupRespawn = 30f;   // seconds; sv_pickup_respawn
     public bool InfiniteAmmo;
     public bool BotAi = true;
@@ -54,6 +58,7 @@ public sealed class GameWorld
         p.Yaw = cmd.Yaw; p.Pitch = cmd.Pitch;
         if (select is { } w && p.Owned.Contains(w)) p.Current = w;
 
+        HandleHook(p, cmd.Grapple);
         if (p.Alive)
         {
             p.Move.Tick(cmd, Dt);
@@ -62,6 +67,8 @@ public sealed class GameWorld
         else if (p.RespawnAt > 0 && Time >= p.RespawnAt) RespawnPlayer(p);
 
         foreach (var b in Bots) b.Update(this);
+        UpdateHooks();
+        UpdatePads();
         UpdatePickups();
         UpdateProjectiles();
         foreach (var t in Targets)
@@ -96,6 +103,7 @@ public sealed class GameWorld
 
     internal void Reset(Player p, Vector3 at)
     {
+        ReleaseHook(p);
         p.Move.Position = at; p.Move.Velocity = default; p.Move.OnGround = false;
         p.Health = p.MaxHealth; p.RespawnAt = 0;
         if (p.IsBot) { p.Shells = 50; p.Nails = 200; p.Rockets = 25; }
@@ -105,6 +113,96 @@ public sealed class GameWorld
             p.Shells = 25; p.Nails = 100; p.Rockets = 10;
             p.Owned = new HashSet<WeaponId> { WeaponId.Axe, WeaponId.Shotgun };
             p.Current = WeaponId.Shotgun;
+        }
+    }
+
+    // ---- grappling hook ----
+
+    /// <summary>Press starts a throw; holding keeps the reel-in going; releasing drops it (momentum is kept).</summary>
+    void HandleHook(Player p, bool held)
+    {
+        var h = p.Hook;
+        if (!p.Alive) { ReleaseHook(p); p.GrappleHeld = false; return; }
+        if (held && !p.GrappleHeld && h.State == HookState.None && Time >= h.NextAt)
+        {
+            h.State = HookState.Flying; h.Pos = p.Eye; h.Dir = p.Look; h.Traveled = 0;
+            Events.Add(new GameEvent(EventKind.HookFire, p.Eye, Arg: p == Player ? 1 : 0));
+        }
+        if (!held && h.State != HookState.None) ReleaseHook(p);
+        p.GrappleHeld = held;
+    }
+
+    public void ReleaseHook(Player p)
+    {
+        var h = p.Hook;
+        if (h.State == HookState.None) return;
+        h.State = HookState.None;
+        h.NextAt = Time + 0.25f;
+        p.Move.HookAnchor = null;
+    }
+
+    void UpdateHooks()
+    {
+        foreach (var c in Combatants)
+        {
+            var h = c.Hook;
+            if (h.State == HookState.Flying)
+            {
+                float step = HookFlightSpeed * Dt;
+                var seg = h.Dir * step;
+                var wall = Map.TraceRay(h.Pos, h.Pos + seg);
+                float entity = float.MaxValue;
+                foreach (var t in Targets)
+                    if (t.Alive && World.RayVsBox(h.Pos, seg, t.Bounds.Min, t.Bounds.Max, out float f, out _)) entity = MathF.Min(entity, f);
+                foreach (var o in Combatants)
+                    if (o != c && o.Alive) { var b = Box(o); if (World.RayVsBox(h.Pos, seg, b.Min, b.Max, out float f, out _)) entity = MathF.Min(entity, f); }
+
+                if (entity < wall.Fraction) { ReleaseHook(c); continue; }            // hooks don't grab people
+                if (wall.Hit)
+                {
+                    h.State = HookState.Attached; h.Pos = wall.EndPos;
+                    h.CheckAt = Time + 0.35f; h.LastDist = Vector3.Distance(c.Move.Position, h.Pos);
+                    c.Move.HookAnchor = h.Pos;
+                    Events.Add(new GameEvent(EventKind.HookAttach, h.Pos, wall.Normal, c == Player ? 1 : 0));
+                }
+                else
+                {
+                    h.Pos += seg; h.Traveled += step;
+                    if (h.Traveled >= HookRange) ReleaseHook(c);                     // nothing in range
+                }
+            }
+            else if (h.State == HookState.Attached)
+            {
+                if (!c.Alive) { ReleaseHook(c); continue; }
+                if (Time >= h.CheckAt)
+                {
+                    // Snagged on geometry and no longer closing in: let go rather than dangling forever.
+                    float dist = Vector3.Distance(c.Move.Position, h.Pos);
+                    if (dist > 64f && h.LastDist - dist < 6f) { ReleaseHook(c); continue; }
+                    h.LastDist = dist; h.CheckAt = Time + 0.35f;
+                }
+            }
+        }
+    }
+
+    // ---- jump pads ----
+
+    void UpdatePads()
+    {
+        if (JumpPads.Count == 0) return;
+        foreach (var c in Combatants)
+        {
+            if (!c.Alive || Time < c.PadCooldownUntil) continue;
+            var box = Box(c);
+            foreach (var pad in JumpPads)
+            {
+                if (!box.Overlaps(pad.Trigger)) continue;
+                c.Move.Velocity = pad.LaunchVelocity(c.Move.Position, Settings.Gravity);
+                c.Move.OnGround = false;
+                c.PadCooldownUntil = Time + PadRetrigger;
+                Events.Add(new GameEvent(EventKind.JumpPad, pad.Center, c == Player ? Vector3.UnitX : default));
+                break;
+            }
         }
     }
 

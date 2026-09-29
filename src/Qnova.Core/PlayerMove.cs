@@ -7,6 +7,7 @@ public struct UserCmd
     public float Forward;   // -1..1
     public float Side;      // -1..1 (positive = right)
     public bool Jump;
+    public bool Grapple;    // grappling-hook key held
     public float Yaw;       // degrees, 0 looks down -Z, positive turns left
     public float Pitch;     // degrees, positive looks up
 }
@@ -40,6 +41,7 @@ public sealed class MoveSettings
     public float Friction = MoveVars.Friction;
     public float JumpSpeed = MoveVars.JumpSpeed;
     public float StepHeight = MoveVars.StepHeight;
+    public float HookSpeed = 800f;   // pull speed toward the grapple anchor (Q3: 800)
 }
 
 /// <summary>Quake-style player physics: ground friction, accelerate, air-strafe, slide-move, step-up.</summary>
@@ -52,6 +54,7 @@ public sealed class PlayerMove
     bool _jumpHeld;
 
     public bool NoClip;         // fly through geometry (cheat)
+    public Vector3? HookAnchor; // set while a grappling hook is attached: the player is reeled in toward it
 
     readonly World _world;
     readonly MoveSettings _s;
@@ -88,6 +91,8 @@ public sealed class PlayerMove
         }
         _jumpHeld = cmd.Jump;
 
+        if (HookAnchor is { } anchor) { HookMove(anchor, dt); return; }
+
         var wishvel = ForwardFlat(cmd.Yaw) * (cmd.Forward * MoveVars.MoveScale)
                     + RightFlat(cmd.Yaw) * (cmd.Side * MoveVars.MoveScale);
         float wishspeed = wishvel.Length();
@@ -108,6 +113,20 @@ public sealed class PlayerMove
             FlyMove(dt, out _);
         }
         CheckGround();
+    }
+
+    /// <summary>Reel toward the anchor: velocity eases to HookSpeed along the line (gravity is overridden), then slides as
+    /// usual. Within a few dozen units the player hangs. Releasing the hook keeps the momentum (slingshot).</summary>
+    void HookMove(Vector3 anchor, float dt)
+    {
+        OnGround = false;
+        var to = anchor - Position;
+        float dist = to.Length();
+        var target = dist > 48f ? to / dist * _s.HookSpeed : Vector3.Zero;
+        Velocity += (target - Velocity) * (1f - MathF.Exp(-9f * dt));
+        FlyMove(dt, out _);
+        var tr = _world.TraceBox(Position, Position - new Vector3(0, 1f, 0), MoveVars.Half);
+        if (tr.Hit && tr.Normal.Y > 0.7f && Velocity.Y <= 0) OnGround = true;   // skimming a floor while reeling in
     }
 
     void NoClipMove(in UserCmd cmd, float dt)
