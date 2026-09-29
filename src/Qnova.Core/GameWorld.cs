@@ -19,6 +19,8 @@ public sealed class GameWorld
     public readonly List<Vector3> SpawnPoints = new();
     public readonly List<Bot> Bots = new();
     public readonly List<Pickup> Pickups = new();
+    public readonly List<DecorBox> Decor = new();      // visual only
+    public readonly List<MapLight> Lights = new();
     public float PickupRespawn = 30f;   // seconds; sv_pickup_respawn
     public bool InfiniteAmmo;
     public bool BotAi = true;

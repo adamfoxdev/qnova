@@ -69,3 +69,10 @@ Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Gam
 
 Handy for headless screenshots (e.g. under `xvfb-run` with `LIBGL_ALWAYS_SOFTWARE=1`): `--start` (skip the menu), `--paused`,
 `--options`, `--console`, `--exec "<console line>"`, `--shot <name.png> --shot-after <seconds>` (saved in the working directory, then exit).
+
+## Map look
+
+The arena is lit by a custom shader (`Qnova.Game/MapRenderer.cs`) with no image assets: procedural stone-slab floors,
+concrete-block walls, bolted metal plates and dark ceiling plating, all grimed and cracked, plus point lights
+(torches, ceiling lamps, cold bunker lamps, flickering red beacons), dynamic lights for rockets, explosions and muzzle flashes,
+and dark distance fog. Map data (surfaces, lights, girders/trim/fixtures) lives in `Qnova.Core` (`MapVisuals.cs`, `Arena.cs`).
