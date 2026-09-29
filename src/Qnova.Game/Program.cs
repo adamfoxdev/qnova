@@ -7,6 +7,7 @@ static Vector3 R(Vector3 v) => v * S;
 
 // Developer flags (used to capture screenshots headlessly): --start, --paused, --options, --console, --lock-look, --pos "x y z", --yaw, --pitch, --exec "<console line>", --shot <png> [--shot-after <sec>]
 string? Arg(string name) { int i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+if (Arg("--sprite-sheet") is { } sheetPath) { EnemySprites.WriteContactSheet(sheetPath); return; }   // dev: dump the enemy art and exit
 bool devLock = args.Contains("--lock-look");   // ignore mouse look (keeps screenshots framed)
 bool devStart = args.Contains("--start"), devConsole = args.Contains("--console");
 string? devExec = Arg("--exec"), shotPath = Arg("--shot"), devPos = Arg("--pos");
