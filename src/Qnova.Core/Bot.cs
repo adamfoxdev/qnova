@@ -1,0 +1,187 @@
+using System.Numerics;
+
+namespace Qnova.Core;
+
+/// <summary>An AI opponent: a <see cref="Player"/> body driven by the same movement and weapon rules as the
+/// human. It sees you by line-of-sight, hunts your last known position, strafes and jumps in a fight,
+/// leads projectile shots and aims rockets at your feet. Skill (1-5) scales aim error, reaction and turn speed.</summary>
+public sealed class Bot
+{
+    public readonly Player Body;
+    readonly Random _rng;
+
+    Vector3 _goal, _lastSeen;
+    float _goalUntil, _lastSeenTime, _reactAt, _strafeUntil, _nextJump, _weaponCheck, _errUntil, _stuckCheck, _detourUntil;
+    bool _hasLast, _wasSeeing;
+    float _strafe = 1, _errYaw, _errPitch, _detour;
+    Vector3 _stuckPos;
+
+    public Bot(Player body, int seed) { Body = body; _rng = new Random(seed); }
+
+    float Rand(float a, float b) => a + (float)_rng.NextDouble() * (b - a);
+
+    public static float YawOf(Vector3 d) => MathF.Atan2(-d.X, -d.Z) * 180f / MathF.PI;
+    public static float PitchOf(Vector3 d) => MathF.Asin(Math.Clamp(d.Y / d.Length(), -1f, 1f)) * 180f / MathF.PI;
+
+    static float Wrap(float a) { a %= 360f; if (a > 180f) a -= 360f; if (a < -180f) a += 360f; return a; }
+    static float Approach(float cur, float target, float maxStep) => cur + Math.Clamp(Wrap(target - cur), -maxStep, maxStep);
+
+    public void Update(GameWorld g)
+    {
+        var me = Body; float t = g.Time;
+        if (!me.Alive)
+        {
+            if (t >= me.RespawnAt) g.RespawnPlayer(me);
+            return;
+        }
+        if (!g.BotAi) { me.Move.Tick(default, GameWorld.Dt); return; }
+
+        int skill = Math.Clamp(g.BotSkill, 1, 5);
+        // Bots don't scavenge for ammo; they simply never run dry.
+        me.Shells = Math.Max(me.Shells, 20); me.Nails = Math.Max(me.Nails, 100); me.Rockets = Math.Max(me.Rockets, 10);
+
+        var enemy = g.Player;
+        var pos = me.Move.Position;
+        bool see = false; float dist = 0;
+        if (enemy.Alive)
+        {
+            dist = Vector3.Distance(pos, enemy.Move.Position);
+            see = dist < 3500 && (!g.Map.TraceRay(me.Eye, enemy.Move.Position).Hit || !g.Map.TraceRay(me.Eye, enemy.Eye).Hit);
+        }
+        if (see)
+        {
+            if (!_wasSeeing) _reactAt = t + Rand(0.15f, 0.9f) * (6 - skill) / 3f;   // reaction time shrinks with skill
+            _lastSeen = enemy.Move.Position; _lastSeenTime = t; _hasLast = true;
+        }
+        _wasSeeing = see;
+
+        var cmd = new UserCmd();
+        float desiredYaw = me.Yaw, desiredPitch = 0f;
+        bool wantFire = false;
+
+        if (see)
+        {
+            ChooseWeapon(me, dist, t);
+            var def = WeaponDef.Get(me.Current);
+            var aim = AimPoint(enemy, def, dist, skill);
+            var d = aim - me.Eye;
+            desiredYaw = YawOf(d); desiredPitch = PitchOf(d);
+            wantFire = t >= _reactAt;
+
+            // Strafe around the target; close in when far, back off when near.
+            if (t >= _strafeUntil) { _strafe = _rng.Next(2) == 0 ? -1f : 1f; _strafeUntil = t + Rand(0.5f, 1.6f); }
+            cmd.Side = _strafe;
+            cmd.Forward = dist > 700 ? 1f : dist < 300 ? -0.8f : 0f;
+            if (skill >= 2 && me.Move.OnGround && t >= _nextJump) { cmd.Jump = true; _nextJump = t + Rand(1.2f, 3.5f); }
+
+            // Don't strafe into walls.
+            var wish = PlayerMove.RightFlat(me.Yaw) * cmd.Side + PlayerMove.ForwardFlat(me.Yaw) * cmd.Forward;
+            if (wish.LengthSquared() > 0.01f && Blocked(g, pos, Vector3.Normalize(wish), 48f, out _))
+            { _strafe = -_strafe; _strafeUntil = t + Rand(0.4f, 1f); cmd.Side = _strafe; }
+        }
+        else
+        {
+            Navigate(g, me, t, ref cmd, out desiredYaw);
+        }
+
+        // Turn toward the desired heading at a skill-limited rate, with a little re-rolled aim error.
+        if (t >= _errUntil)
+        {
+            float e = (6 - skill) * 2.2f;   // degrees of aim wobble: 11 at skill 1 .. 2.2 at skill 5
+            _errYaw = Rand(-e, e); _errPitch = Rand(-e, e) * 0.6f; _errUntil = t + 0.25f;
+        }
+        float rate = (220f + 110f * skill) * GameWorld.Dt;
+        me.Yaw = Approach(me.Yaw, desiredYaw + (see ? _errYaw : 0f), rate);
+        me.Pitch = Approach(me.Pitch, Math.Clamp(desiredPitch + (see ? _errPitch : 0f), -80f, 80f), rate);
+        cmd.Yaw = me.Yaw; cmd.Pitch = me.Pitch;
+
+        me.Move.Tick(cmd, GameWorld.Dt);
+
+        if (wantFire)
+        {
+            float err = MathF.Abs(Wrap(desiredYaw - me.Yaw)) + MathF.Abs(desiredPitch - me.Pitch);
+            if (err < 6f + 3f * (5 - skill) && t >= me.NextFire)
+            {
+                g.TryFire(me);
+                // Low-skill bots hesitate between shots (0-2s at skill 1, none at skill 5).
+                me.NextFire += Rand(0f, 1f) * (5 - skill) * 0.5f;
+            }
+        }
+    }
+
+    void ChooseWeapon(Player me, float dist, float t)
+    {
+        if (t < _weaponCheck) return;
+        _weaponCheck = t + 0.8f;
+        me.Current = dist < 320 ? WeaponId.SuperShotgun
+                   : dist < 1300 ? WeaponId.RocketLauncher
+                   : WeaponId.SuperNailgun;
+    }
+
+    static Vector3 AimPoint(Player enemy, WeaponDef def, float dist, int skill)
+    {
+        var target = enemy.Move.Position;
+        if (def.ProjectileSpeed > 0)
+        {
+            // Lead the target; skill scales how much of the ideal lead the bot applies.
+            float travel = dist / def.ProjectileSpeed;
+            var vel = new Vector3(enemy.Move.Velocity.X, 0, enemy.Move.Velocity.Z);
+            target += vel * travel * (0.4f + 0.12f * skill);
+            // Rockets: aim at the floor by their feet so splash lands even on a miss.
+            if (def.Mode == FireMode.Rocket && enemy.Move.OnGround) target.Y -= 22f;
+        }
+        return target;
+    }
+
+    static bool Blocked(GameWorld g, Vector3 pos, Vector3 dir, float len, out Trace tr)
+    {
+        tr = g.Map.TraceBox(pos, pos + dir * len, MoveVars.Half);
+        return tr.Hit && tr.Normal.Y < 0.7f;
+    }
+
+    void Navigate(GameWorld g, Player me, float t, ref UserCmd cmd, out float desiredYaw)
+    {
+        var pos = me.Move.Position;
+        bool chasing = _hasLast && t - _lastSeenTime < 8f && Vector3.Distance(pos, _lastSeen) > 150f;
+        if (chasing) _goal = _lastSeen;
+        else if (t >= _goalUntil || Vector3.Distance(pos, _goal) < 120f)
+        {
+            for (int tries = 0; tries < 12; tries++)
+            {
+                _goal = new Vector3(Rand(-1800f, 1800f), 28f, Rand(-1800f, 1800f));
+                if (g.Map.IsEmpty(_goal, MoveVars.Half)) break;   // don't wander into pillars and walls
+            }
+            _goalUntil = t + 6f;
+        }
+
+        // Stuck detection: barely moved in 1.5s -> new goal and a random detour.
+        if (t >= _stuckCheck)
+        {
+            if (_stuckCheck > 0 && Vector3.Distance(pos, _stuckPos) < 30f)
+            {
+                _goalUntil = 0; _detour = Rand(-100f, 100f); _detourUntil = t + 1.0f;
+            }
+            _stuckPos = pos; _stuckCheck = t + 1.5f;
+        }
+
+        var flat = new Vector3(_goal.X - pos.X, 0, _goal.Z - pos.Z);
+        if (flat.LengthSquared() < 1f) flat = PlayerMove.ForwardFlat(me.Yaw);
+        float heading = YawOf(flat) + (t < _detourUntil ? _detour : 0f);
+
+        // Look ahead; hop small obstacles, otherwise swing toward whichever side is clear.
+        var ahead = PlayerMove.ForwardFlat(heading);
+        if (Blocked(g, pos, ahead, 72f, out _))
+        {
+            var high = g.Map.TraceBox(pos + new Vector3(0, 44f, 0), pos + new Vector3(0, 44f, 0) + ahead * 72f, MoveVars.Half);
+            if (!high.Hit && me.Move.OnGround) cmd.Jump = true;
+            else
+            {
+                foreach (float off in new[] { 60f, -60f, 100f, -100f, 140f, -140f })
+                    if (!Blocked(g, pos, PlayerMove.ForwardFlat(heading + off), 96f, out _))
+                    { _detour = off; _detourUntil = t + 0.8f; heading += off; break; }
+            }
+        }
+        cmd.Forward = 1f;
+        desiredYaw = heading;
+    }
+}

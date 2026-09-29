@@ -32,3 +32,14 @@ to set it; `;` separates commands; TAB completes; Up/Down recall history; PgUp/P
 - Gameplay commands: `weapon <1-7|name>`, `getpos`, `stats`, `respawn`, `kill`, `mute`.
 - Cheats (need `sv_cheats 1`; turning it back off reverts them): `god`, `noclip`, `sv_infiniteammo`,
   `give <all|health|ammo|shells|nails|rockets|weapon> [n]`, `setpos x y z`, `spawn [n]`, `killtargets`, `host_timescale`.
+
+## Map and bots
+
+The arena (`Arena.Build`) is 4096 x 4096 units: a central mesa with stairs on all four sides, four walled
+bunkers with doorways, a ring of pillars, an east ledge, crates you can jump onto and cover walls.
+One bot spawns at start. Bots use the same movement, weapons and damage rules as you (they obey `sv_gravity` etc.):
+they see you by line of sight, hunt your last known position, strafe and hop in a fight, lead projectile shots and
+aim rockets at your feet, and pick a weapon by range. Both sides respawn after 3 seconds at the spawn point
+farthest from the enemy. The scoreboard (top right) shows frags / deaths; suicide costs a frag.
+
+- `bot_add [n]`, `bot_removeall`, `bots` (scoreboard), `bot_skill 1-5` (aim error, reaction time, turn speed, shot delay), `bot_ai 0|1` (freeze bots)

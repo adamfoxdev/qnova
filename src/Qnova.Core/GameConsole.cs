@@ -29,6 +29,8 @@ public sealed class GameConsole
     readonly Dictionary<string, ConsoleCommand> _cmds = new(StringComparer.OrdinalIgnoreCase);
     public readonly List<string> Lines = new();
     public const int MaxLines = 500;
+    /// <summary>Total lines ever printed; lets a UI detect new output even after old lines are trimmed.</summary>
+    public long TotalPrinted { get; private set; }
 
     public GameConsole()
     {
@@ -93,7 +95,7 @@ public sealed class GameConsole
 
     public void Print(string line)
     {
-        foreach (var l in line.Split('\n')) Lines.Add(l);
+        foreach (var l in line.Split('\n')) { Lines.Add(l); TotalPrinted++; }
         if (Lines.Count > MaxLines) Lines.RemoveRange(0, Lines.Count - MaxLines);
     }
 

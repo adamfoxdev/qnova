@@ -1,3 +1,4 @@
+using System.Numerics;
 using Qnova.Core;
 using Raylib_cs;
 
@@ -10,7 +11,50 @@ sealed class ConsoleUi
     int _histIdx, _scroll;
     public bool Open { get; private set; }
 
-    public ConsoleUi(GameConsole c) => _c = c;
+    // Raylib's built-in font is a 10px bitmap: only crisp at multiples of 10, so the fallback uses 20.
+    // Prefer a real monospace TTF from the system, rasterised at the display size.
+    const int FontSize = 20;
+    const int LineHeight = 24;
+    static readonly string[] FontCandidates =
+    {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
+        "/System/Library/Fonts/Menlo.ttc",
+        "/System/Library/Fonts/Monaco.ttf",
+        "/Library/Fonts/Courier New.ttf",
+        @"C:\Windows\Fonts\consola.ttf",
+        @"C:\Windows\Fonts\cour.ttf",
+    };
+    readonly Font _font;
+    readonly bool _customFont;
+
+    public ConsoleUi(GameConsole c)
+    {
+        _c = c;
+        _font = Raylib.GetFontDefault();
+        foreach (var path in FontCandidates)
+        {
+            if (!File.Exists(path)) continue;
+            var f = Raylib.LoadFontEx(path, FontSize, null, 0);   // null codepoints = basic ASCII
+            if (f.Texture.Id == 0) continue;
+            Raylib.SetTextureFilter(f.Texture, TextureFilter.Bilinear);
+            _font = f; _customFont = true;
+            break;
+        }
+    }
+
+    public void Unload() { if (_customFont) Raylib.UnloadFont(_font); }
+
+    void Text(string text, float x, float y, Color color)
+    {
+        float spacing = _customFont ? 0f : 2f;
+        Raylib.DrawTextEx(_font, text, new Vector2(x + 1, y + 1), FontSize, spacing, new Color(0, 0, 0, 255));   // shadow
+        Raylib.DrawTextEx(_font, text, new Vector2(x, y), FontSize, spacing, color);
+    }
 
     public void Toggle()
     {
@@ -69,17 +113,17 @@ sealed class ConsoleUi
 
     public void Draw(int w, int h)
     {
-        int ch = h / 2, line = 18;
-        Raylib.DrawRectangle(0, 0, w, ch, new Color(10, 10, 16, 225));
-        Raylib.DrawRectangle(0, ch, w, 2, new Color(200, 80, 40, 255));
+        int ch = h / 2;
+        Raylib.DrawRectangle(0, 0, w, ch, new Color(0, 0, 0, 235));
+        Raylib.DrawRectangle(0, ch, w, 2, new Color(230, 110, 40, 255));
 
-        int rows = (ch - 36) / line;
+        int rows = (ch - LineHeight - 16) / LineHeight;
         int last = _c.Lines.Count - 1 - _scroll;
         for (int r = 0; r < rows && last - r >= 0; r++)
-            Raylib.DrawText(_c.Lines[last - r], 10, ch - 34 - r * line, 16, new Color(220, 220, 220, 255));
-        if (_scroll > 0) Raylib.DrawText($"^ {_scroll} more (PgDn)", w - 180, 6, 14, Color.Gray);
+            Text(_c.Lines[last - r], 12, ch - LineHeight * 2 - 6 - r * LineHeight, new Color(235, 235, 235, 255));
+        if (_scroll > 0) Text($"^ {_scroll} more (PgDn)", w - 260, 6, new Color(170, 170, 170, 255));
 
         bool blink = (int)(Raylib.GetTime() * 2) % 2 == 0;
-        Raylib.DrawText("] " + _input + (blink ? "_" : ""), 10, ch - 22, 18, Color.Orange);
+        Text("] " + _input + (blink ? "_" : " "), 12, ch - LineHeight - 4, new Color(255, 190, 90, 255));
     }
 }
