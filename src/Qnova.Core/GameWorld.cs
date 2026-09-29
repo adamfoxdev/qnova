@@ -18,6 +18,8 @@ public sealed class GameWorld
     public readonly Vector3 SpawnPoint;
     public readonly List<Vector3> SpawnPoints = new();
     public readonly List<Bot> Bots = new();
+    public readonly List<Pickup> Pickups = new();
+    public float PickupRespawn = 30f;   // seconds; sv_pickup_respawn
     public bool InfiniteAmmo;
     public bool BotAi = true;
     public int BotSkill = 3;           // 1 (easy) .. 5 (hard)
@@ -57,6 +59,7 @@ public sealed class GameWorld
         else if (p.RespawnAt > 0 && Time >= p.RespawnAt) RespawnPlayer(p);
 
         foreach (var b in Bots) b.Update(this);
+        UpdatePickups();
         UpdateProjectiles();
         foreach (var t in Targets)
             if (!t.Alive && Time >= t.RespawnAt) t.Health = 100;
@@ -67,6 +70,7 @@ public sealed class GameWorld
     public Bot AddBot()
     {
         var body = new Player(Map, SpawnPoint, Settings) { Name = $"Bot{++_botCounter}", IsBot = true };
+        body.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());   // bots spawn with the full arsenal
         var bot = new Bot(body, Rng.Next());
         Bots.Add(bot);
         RespawnPlayer(body);
@@ -92,7 +96,60 @@ public sealed class GameWorld
         p.Move.Position = at; p.Move.Velocity = default; p.Move.OnGround = false;
         p.Health = p.MaxHealth; p.RespawnAt = 0;
         if (p.IsBot) { p.Shells = 50; p.Nails = 200; p.Rockets = 25; }
-        else { p.Shells = 25; p.Nails = 100; p.Rockets = 10; }
+        else
+        {
+            // Humans lose their guns on death and start over with the axe and shotgun.
+            p.Shells = 25; p.Nails = 100; p.Rockets = 10;
+            p.Owned = new HashSet<WeaponId> { WeaponId.Axe, WeaponId.Shotgun };
+            p.Current = WeaponId.Shotgun;
+        }
+    }
+
+    // ---- pickups ----
+
+    void UpdatePickups()
+    {
+        foreach (var k in Pickups)
+        {
+            if (!k.Active)
+            {
+                if (Time < k.RespawnAt) continue;
+                k.Active = true;
+                Events.Add(new GameEvent(EventKind.ItemRespawn, k.Position, Arg: (int)k.Kind));
+            }
+            var box = k.Bounds;
+            foreach (var c in Combatants)
+            {
+                if (!c.Alive || !Box(c).Overlaps(box) || !TryCollect(c, k)) continue;
+                k.Active = false;
+                k.RespawnAt = Time + PickupRespawn;
+                Events.Add(new GameEvent(EventKind.Pickup, k.Position, c == Player ? Vector3.UnitX : default, (int)k.Kind));
+                if (c == Player) Console.Print($"You got the {k.Name}");
+                break;
+            }
+        }
+    }
+
+    /// <summary>Apply a pickup to a combatant. Returns false (leaving the item in place) if it would do nothing.</summary>
+    bool TryCollect(Player c, Pickup k)
+    {
+        switch (k.Kind)
+        {
+            case PickupKind.Health:
+                if (c.Health >= c.MaxHealth) return false;
+                c.Health = Math.Min(c.MaxHealth, c.Health + k.Amount);
+                return true;
+            case PickupKind.Shells: return c.AddAmmo(AmmoType.Shells, k.Amount) > 0;
+            case PickupKind.Nails: return c.AddAmmo(AmmoType.Nails, k.Amount) > 0;
+            case PickupKind.Rockets: return c.AddAmmo(AmmoType.Rockets, k.Amount) > 0;
+            default:
+                var (type, amt) = Pickup.WeaponAmmo(k.Weapon);
+                bool isNew = c.Owned.Add(k.Weapon);
+                int got = type == AmmoType.None ? 0 : c.AddAmmo(type, k.Amount > 0 ? k.Amount : amt);
+                if (!isNew && got == 0) return false;                  // already have it and full of ammo
+                if (isNew && !c.IsBot && WeaponDef.Get(k.Weapon).Id > c.Current) c.Current = k.Weapon;   // auto-switch up
+                return true;
+        }
     }
 
     // ---- firing ----
@@ -335,5 +392,6 @@ public static class GameWorldExtensions
         g.Reset(g.Player, g.SpawnPoint);
         foreach (var b in g.Bots) g.RespawnPlayer(b.Body);
         foreach (var t in g.Targets) { t.Health = 100; t.Velocity = default; }
+        foreach (var k in g.Pickups) k.Active = true;
     }
 }

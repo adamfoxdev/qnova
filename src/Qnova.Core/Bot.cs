@@ -13,6 +13,7 @@ public sealed class Bot
     Vector3 _goal, _lastSeen;
     float _goalUntil, _lastSeenTime, _reactAt, _strafeUntil, _nextJump, _weaponCheck, _errUntil, _stuckCheck, _detourUntil;
     bool _hasLast, _wasSeeing;
+    Pickup? _goalPickup;      // non-null while heading for a specific item
     float _strafe = 1, _errYaw, _errPitch, _detour;
     Vector3 _stuckPos;
 
@@ -133,6 +134,24 @@ public sealed class Bot
         return target;
     }
 
+    static float FlatDist(Vector3 a, Vector3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));
+
+    /// <summary>Hurt bots go for the nearest health; otherwise roughly half the time they head for a random ready item.</summary>
+    Pickup? PickPickup(GameWorld g, Player me)
+    {
+        Pickup? best = null; float bestD = float.MaxValue;
+        bool hurt = me.Health < 70;
+        var ready = new List<Pickup>();
+        foreach (var k in g.Pickups)
+        {
+            if (!k.Active) continue;
+            if (hurt) { if (k.Kind != PickupKind.Health) continue; float d = FlatDist(me.Move.Position, k.Position); if (d < bestD) { bestD = d; best = k; } }
+            else ready.Add(k);
+        }
+        if (hurt) return best;
+        return ready.Count > 0 && _rng.NextDouble() < 0.5 ? ready[_rng.Next(ready.Count)] : null;
+    }
+
     static bool Blocked(GameWorld g, Vector3 pos, Vector3 dir, float len, out Trace tr)
     {
         tr = g.Map.TraceBox(pos, pos + dir * len, MoveVars.Half);
@@ -144,14 +163,18 @@ public sealed class Bot
         var pos = me.Move.Position;
         bool chasing = _hasLast && t - _lastSeenTime < 8f && Vector3.Distance(pos, _lastSeen) > 150f;
         if (chasing) _goal = _lastSeen;
-        else if (t >= _goalUntil || Vector3.Distance(pos, _goal) < 120f)
+        else if (t >= _goalUntil || (_goalPickup != null ? !_goalPickup.Active : FlatDist(pos, _goal) < 120f))
         {
+            var want = PickPickup(g, me);
+            _goalPickup = want;
+            if (want != null) { _goal = want.Position; _goalUntil = t + 10f; }
+            else
             for (int tries = 0; tries < 12; tries++)
             {
                 _goal = new Vector3(Rand(-1800f, 1800f), 28f, Rand(-1800f, 1800f));
                 if (g.Map.IsEmpty(_goal, MoveVars.Half)) break;   // don't wander into pillars and walls
             }
-            _goalUntil = t + 6f;
+            if (want == null) _goalUntil = t + 6f;
         }
 
         // Stuck detection: barely moved in 1.5s -> new goal and a random detour.

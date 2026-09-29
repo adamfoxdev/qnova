@@ -155,6 +155,7 @@ public class ConsoleTests
     public void Weapon_names_and_numbers_resolve()
     {
         var g = Flat();
+        g.Console.Execute("sv_cheats 1; give all");
         g.Console.Execute("weapon ssg");
         Assert.Equal(WeaponId.SuperShotgun, g.Player.Current);
         g.Console.Execute("weapon 7");

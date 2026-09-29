@@ -63,8 +63,35 @@ public static class Arena
 
         foreach (var pos in new[] { new Vector3(-600, 28, -900), new(600, 28, 900), new(0, 156, 0) })
             g.Targets.Add(new Target { Origin = pos });
+        AddPickups(g);
         for (int i = 0; i < bots; i++) g.AddBot();
         return g;
+    }
+
+    static void AddPickups(GameWorld g)
+    {
+        void Health(float x, float y, float z) => g.Pickups.Add(new Pickup { Kind = PickupKind.Health, Amount = 25, Position = new(x, y, z) });
+        void Ammo(PickupKind k, int n, float x, float y, float z) => g.Pickups.Add(new Pickup { Kind = k, Amount = n, Position = new(x, y, z) });
+        void Gun(WeaponId w, float x, float y, float z) => g.Pickups.Add(new Pickup { Kind = PickupKind.Weapon, Weapon = w, Position = new(x, y, z) });
+
+        // Weapons: the double shotgun on the mesa, one gun in each of three bunkers, the rocket launcher on the east ledge.
+        Gun(WeaponId.SuperShotgun, 0, 144, 0);
+        Gun(WeaponId.Nailgun, -1600, 16, -1500);
+        Gun(WeaponId.SuperNailgun, 1600, 16, -1500);
+        Gun(WeaponId.GrenadeLauncher, -1600, 16, 1500);
+        Gun(WeaponId.RocketLauncher, 1950, 144, 0);
+
+        // Health (25 each)
+        Health(200, 144, 200); Health(-200, 144, -200);
+        Health(1600, 16, 1500);
+        Health(0, 16, -1300); Health(0, 16, 1300);
+        Health(-1300, 16, 300); Health(1300, 16, -300);
+
+        // Ammo, sitting beside the pillar ring
+        Ammo(PickupKind.Shells, 20, -800, 16, -900); Ammo(PickupKind.Shells, 20, 800, 16, 900);
+        Ammo(PickupKind.Nails, 50, 800, 16, -900); Ammo(PickupKind.Nails, 50, -800, 16, 900);
+        Ammo(PickupKind.Rockets, 5, 900, 16, -780); Ammo(PickupKind.Rockets, 5, -900, 16, 780);
+        Ammo(PickupKind.Rockets, 5, 1950, 144, 300);
     }
 
     /// <summary>A 512 x 512 walled compound centred at (cx, cz); doorways open toward the map centre (sx, sz = corner signs).</summary>

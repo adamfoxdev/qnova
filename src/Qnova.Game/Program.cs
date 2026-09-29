@@ -85,7 +85,11 @@ while (!quit && !Raylib.WindowShouldClose())
     if (wheel != 0)
     {
         int n = WeaponDef.All.Length, cur = (int)game.Player.Current;
-        sel = (WeaponId)((cur + (wheel > 0 ? 1 : n - 1)) % n);
+        for (int i = 1; i <= n; i++)   // next (or previous) weapon you actually own
+        {
+            var cand = (WeaponId)((cur + (wheel > 0 ? i : n - i)) % n);
+            if (game.Player.Owned.Contains(cand)) { sel = cand; break; }
+        }
     }
     if (!paused && Raylib.IsKeyPressed(KeyboardKey.M)) game.Console.Execute("mute", echo: false);
     if (!paused && Raylib.IsKeyPressed(KeyboardKey.R)) game.Respawn();
@@ -122,6 +126,8 @@ while (!quit && !Raylib.WindowShouldClose())
                 case EventKind.Explosion:
                     Play(SoundId.Explosion, e.A, game.Player.Eye);
                     effects.Add((e.A, (float)now + 0.35f, 120, Color.Orange)); break;
+                case EventKind.Pickup: Play(SoundSynth.ForPickup((PickupKind)e.Arg), e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.5f); break;
+                case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
                 case EventKind.Hurt when e.Arg == 1: hurtUntil = (float)now + 0.25f; break;
                 case EventKind.Impact: effects.Add((e.A, (float)now + 0.1f, 4, Color.Yellow)); break;
                 case EventKind.Tracer: tracers.Add((e.A, e.B, (float)now + 0.05f)); break;
@@ -150,6 +156,26 @@ while (!quit && !Raylib.WindowShouldClose())
     }
     foreach (var t in game.Targets)
         if (t.Alive) Raylib.DrawCubeV(R(t.Origin), R(t.Half * 2), new Color(180, 60 + t.Health, 60, 255));
+    float tnow = (float)Raylib.GetTime();
+    for (int i = 0; i < game.Pickups.Count; i++)
+    {
+        var k = game.Pickups[i];
+        var floor = k.Position - new Vector3(0, 15f, 0);
+        Raylib.DrawCubeV(R(floor), new Vector3(1.1f, 0.06f, 1.1f), k.Active ? new Color(60, 60, 70, 255) : new Color(35, 35, 40, 255));   // pad
+        if (!k.Active) continue;
+        var col = k.Kind switch
+        {
+            PickupKind.Health => new Color(60, 210, 90, 255),
+            PickupKind.Shells => new Color(235, 140, 30, 255),
+            PickupKind.Nails => new Color(180, 180, 195, 255),
+            PickupKind.Rockets => new Color(210, 60, 50, 255),
+            _ => new Color(245, 215, 50, 255),
+        };
+        float sz = k.Kind == PickupKind.Weapon ? 1.0f : 0.7f;
+        var at = R(k.Position + new Vector3(0, 8 + MathF.Sin(tnow * 2.5f + i) * 4f, 0));
+        Raylib.DrawCubeV(at, new Vector3(sz, sz, sz), col);
+        Raylib.DrawCubeWiresV(at, new Vector3(sz, sz, sz), new Color(20, 20, 20, 255));
+    }
     foreach (var b in game.Bots)
     {
         var bp = b.Body;
@@ -193,6 +219,16 @@ while (!quit && !Raylib.WindowShouldClose())
     {
         float left = Math.Max(0f, p.RespawnAt - game.Time);
         Raylib.DrawText($"YOU DIED - respawning in {left:0.0}s", 400, 340, 30, Color.Red);
+    }
+
+    // weapon bar: owned guns bright, current one boxed
+    string[] short_ = { "Axe", "SG", "SSG", "NG", "SNG", "GL", "RL" };
+    for (int i = 0; i < short_.Length; i++)
+    {
+        int x = 16 + i * 74, y = 640;
+        bool owned = p.Owned.Contains((WeaponId)i), cur = p.Current == (WeaponId)i;
+        if (cur) Raylib.DrawRectangleLines(x - 4, y - 3, 68, 26, Color.Yellow);
+        Raylib.DrawText($"{i + 1} {short_[i]}", x, y, 20, owned ? (cur ? Color.Yellow : Color.White) : new Color(90, 90, 90, 255));
     }
 
     // scoreboard (top right)

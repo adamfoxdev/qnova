@@ -1,6 +1,6 @@
 namespace Qnova.Core;
 
-public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire }
+public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn }
 
 /// <summary>Procedurally synthesized 16-bit mono sound effects, so the game ships no audio assets.</summary>
 public static class SoundSynth
@@ -16,6 +16,13 @@ public static class SoundSynth
         WeaponId.SuperNailgun => SoundId.SuperNailgun,
         WeaponId.GrenadeLauncher => SoundId.GrenadeLaunch,
         _ => SoundId.RocketLaunch,
+    };
+
+    public static SoundId ForPickup(PickupKind k) => k switch
+    {
+        PickupKind.Weapon => SoundId.PickupWeapon,
+        PickupKind.Health => SoundId.PickupHealth,
+        _ => SoundId.Pickup,
     };
 
     public static short[] Generate(SoundId id)
@@ -40,6 +47,13 @@ public static class SoundSynth
                 Tone(1.0f, 70, 25, decay: 0.35f, gain: 1.0f),
                 Noise(rng, 0.25f, 0.05f, lowpass: 0.6f, gain: 0.7f)),
             SoundId.Bounce => Mix(Tone(0.08f, 700, 300, decay: 0.03f, gain: 0.5f), Noise(rng, 0.05f, 0.01f, lowpass: 0.7f, gain: 0.4f)),
+            SoundId.Pickup => Mix(Tone(0.2f, 900, 900, decay: 0.05f, gain: 0.5f), Delay(Tone(0.2f, 1350, 1350, decay: 0.06f, gain: 0.5f), 0.06f)),
+            SoundId.PickupWeapon => Mix(
+                Tone(0.5f, 520, 520, decay: 0.12f, gain: 0.5f),
+                Delay(Tone(0.5f, 660, 660, decay: 0.12f, gain: 0.5f), 0.07f),
+                Delay(Tone(0.5f, 880, 880, decay: 0.15f, gain: 0.5f), 0.14f)),
+            SoundId.PickupHealth => Mix(Tone(0.35f, 660, 660, decay: 0.1f, gain: 0.5f), Delay(Tone(0.35f, 880, 880, decay: 0.1f, gain: 0.5f), 0.09f)),
+            SoundId.ItemRespawn => Mix(Tone(0.3f, 300, 600, decay: 0.09f, gain: 0.45f)),
             _ => Mix(Tone(0.05f, 900, 600, decay: 0.012f, gain: 0.5f, square: true)),
         };
     }
