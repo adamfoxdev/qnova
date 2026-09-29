@@ -60,7 +60,7 @@ The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furna
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
 - **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
-- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, plain blocks (flat untextured rendering; also `r_plain 1` in the console). Left/Right adjust; Esc goes back.
+- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, plain blocks (flat untextured rendering; also `r_plain 1` in the console), key bindings. Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
 Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Game/Splash.cs`.
@@ -76,3 +76,15 @@ The arena is lit by a custom shader (`Qnova.Game/MapRenderer.cs`) with no image 
 concrete-block walls, bolted metal plates and dark ceiling plating, all grimed and cracked, plus point lights
 (torches, ceiling lamps, cold bunker lamps, flickering red beacons), dynamic lights for rockets, explosions and muzzle flashes,
 and dark distance fog. Map data (surfaces, lights, girders/trim/fixtures) lives in `Qnova.Core` (`MapVisuals.cs`, `Arena.cs`).
+
+## Key bindings
+
+Options > **KEY BINDINGS** lists every action (move, jump, fire, each weapon, next/previous weapon, mute, respawn). Press Enter on
+a row, then press the new key, mouse button or wheel notch. Esc cancels, Backspace/Delete unbinds. Binding a key that is already
+in use takes it from its old action (the menu tells you). Esc and ` (console) are fixed. "Reset to defaults" restores the originals.
+
+Bindings are saved to `bindings.cfg` in your config folder (`~/.config/qnova` on Linux, `%APPDATA%\qnova` on Windows; override with
+`QNOVA_CONFIG_DIR`). Console equivalents: `bind <key> <action>`, `unbind <key|action>`, `unbindall`, `bind_reset`, `bindlist`.
+Key names are the upper-case Raylib names (`W`, `SPACE`, `LEFTSHIFT`, `UP`, `ONE`...) plus `MOUSE1`-`MOUSE5`, `MWHEELUP`, `MWHEELDOWN`.
+Actions: forward back moveleft moveright jump attack weapon1-weapon7 nextweapon prevweapon mute respawn.
+Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open the bindings screen).
