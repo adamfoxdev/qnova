@@ -176,9 +176,10 @@ public sealed class GameWorld
                 if (!c.Alive) { ReleaseHook(c); continue; }
                 if (Time >= h.CheckAt)
                 {
-                    // Snagged on geometry and no longer closing in: let go rather than dangling forever.
                     float dist = Vector3.Distance(c.Move.Position, h.Pos);
-                    if (dist > 64f && h.LastDist - dist < 6f) { ReleaseHook(c); continue; }
+                    // Swinging on a fixed-length rope legitimately holds the distance constant, so only reeling can snag:
+                    // no longer closing in means we're caught on geometry, so let go rather than dangling forever.
+                    if (!c.Move.Swinging && dist > 64f && h.LastDist - dist < 6f) { ReleaseHook(c); continue; }
                     h.LastDist = dist; h.CheckAt = Time + 0.35f;
                 }
             }
