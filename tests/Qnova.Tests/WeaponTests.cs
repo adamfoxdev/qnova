@@ -156,13 +156,16 @@ public class WeaponTests
     }
 
     [Fact]
-    public void Arena_builds_and_stairs_are_walkable()
+    public void Arena_stairs_are_walkable()
     {
-        var g = Arena.Build();
+        var g = Arena.Build(bots: 0);
         var m = g.Player.Move;
-        m.Position = new Vector3(200, 28, 0);
-        var cmd = new UserCmd { Forward = 1, Yaw = -90 };   // yaw -90 faces +X
-        for (int i = 0; i < 400; i++) g.Tick(cmd, false);
-        Assert.InRange(m.Position.Y, 128 + 27, 128 + 29);   // on top of the platform
+        m.Position = new Vector3(1300, 28, 0);
+        for (int i = 0; i < 400; i++) g.Tick(new UserCmd { Forward = 1, Yaw = -90 }, false);   // yaw -90 faces +X
+        Assert.InRange(m.Position.Y, 128 + 27, 128 + 29);   // on the east ledge
+
+        m.Position = new Vector3(850, 28, 0); m.Velocity = default;
+        for (int i = 0; i < 170; i++) g.Tick(new UserCmd { Forward = 1, Yaw = 90 }, false);    // yaw 90 faces -X
+        Assert.InRange(m.Position.Y, 128 + 27, 128 + 29);   // on top of the central mesa
     }
 }

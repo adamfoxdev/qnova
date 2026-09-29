@@ -2,11 +2,12 @@ using System.Numerics;
 
 namespace Qnova.Core;
 
-/// <summary>Fixed-step simulation of one player, dummy targets and projectiles.</summary>
+/// <summary>Fixed-step simulation of the human player, bots, dummy targets and projectiles.</summary>
 public sealed class GameWorld
 {
     public const float TickRate = 72f;
     public const float Dt = 1f / TickRate;
+    const float RespawnDelay = 3f;
     static readonly Vector3 NailHalf = new(1, 1, 1);
     static readonly Vector3 GrenadeHalf = new(2, 2, 2);
 
@@ -15,20 +16,30 @@ public sealed class GameWorld
     public readonly Player Player;
     public readonly GameConsole Console = new();
     public readonly Vector3 SpawnPoint;
+    public readonly List<Vector3> SpawnPoints = new();
+    public readonly List<Bot> Bots = new();
     public bool InfiniteAmmo;
+    public bool BotAi = true;
+    public int BotSkill = 3;           // 1 (easy) .. 5 (hard)
     public readonly List<Target> Targets = new();
     public readonly List<Projectile> Projectiles = new();
     public readonly List<GameEvent> Events = new();
     public float Time;
-    readonly Random _rng;
+    internal readonly Random Rng;
+    int _botCounter;
 
     public GameWorld(World map, Vector3 spawn, int seed = 1)
     {
         Map = map;
         SpawnPoint = spawn;
-        Player = new Player(map, spawn, Settings);
-        _rng = new Random(seed);
+        Player = new Player(map, spawn, Settings) { Name = "You" };
+        Rng = new Random(seed);
         GameCommands.Install(this);
+    }
+
+    public IEnumerable<Player> Combatants
+    {
+        get { yield return Player; foreach (var b in Bots) yield return b.Body; }
     }
 
     public void Tick(UserCmd cmd, bool fire, WeaponId? select = null)
@@ -41,26 +52,66 @@ public sealed class GameWorld
         if (p.Alive)
         {
             p.Move.Tick(cmd, Dt);
-            if (fire && Time >= p.NextFire) Fire();
+            if (fire && Time >= p.NextFire) Fire(p);
         }
+        else if (p.RespawnAt > 0 && Time >= p.RespawnAt) RespawnPlayer(p);
+
+        foreach (var b in Bots) b.Update(this);
         UpdateProjectiles();
         foreach (var t in Targets)
             if (!t.Alive && Time >= t.RespawnAt) t.Health = 100;
     }
 
+    // ---- bots and spawning ----
+
+    public Bot AddBot()
+    {
+        var body = new Player(Map, SpawnPoint, Settings) { Name = $"Bot{++_botCounter}", IsBot = true };
+        var bot = new Bot(body, Rng.Next());
+        Bots.Add(bot);
+        RespawnPlayer(body);
+        return bot;
+    }
+
+    /// <summary>Spawn at the point farthest from every living opponent, with full health and fresh ammo.</summary>
+    public void RespawnPlayer(Player p)
+    {
+        var best = SpawnPoint; float bestScore = float.MinValue;
+        foreach (var sp in SpawnPoints.Count > 0 ? SpawnPoints : new List<Vector3> { SpawnPoint })
+        {
+            float nearest = float.MaxValue;
+            foreach (var o in Combatants) if (o != p && o.Alive) nearest = MathF.Min(nearest, Vector3.Distance(o.Move.Position, sp));
+            float score = nearest + (float)Rng.NextDouble() * 50f;   // jitter so ties vary
+            if (score > bestScore) { bestScore = score; best = sp; }
+        }
+        Reset(p, best);
+    }
+
+    internal void Reset(Player p, Vector3 at)
+    {
+        p.Move.Position = at; p.Move.Velocity = default; p.Move.OnGround = false;
+        p.Health = p.MaxHealth; p.RespawnAt = 0;
+        if (p.IsBot) { p.Shells = 50; p.Nails = 200; p.Rockets = 25; }
+        else { p.Shells = 25; p.Nails = 100; p.Rockets = 10; }
+    }
+
     // ---- firing ----
 
-    void Fire()
+    public void TryFire(Player p)
     {
-        var p = Player;
+        if (p.Alive && Time >= p.NextFire) Fire(p);
+    }
+
+    void Fire(Player p)
+    {
         var def = WeaponDef.Get(p.Current);
         if (p.Ammo(def.Ammo) < def.AmmoPerShot)
         {
             p.NextFire = Time + 0.25f;   // rate-limit the empty click
-            Events.Add(new GameEvent(EventKind.DryFire, p.Eye, Arg: (int)def.Id));
+            if (!p.IsBot) Events.Add(new GameEvent(EventKind.DryFire, p.Eye, Arg: (int)def.Id));
             return;
         }
-        if (!InfiniteAmmo) p.Spend(def.Ammo, def.AmmoPerShot);
+        if (!(InfiniteAmmo && p == Player)) p.Spend(def.Ammo, def.AmmoPerShot);
         p.NextFire = Time + def.Refire;
         Events.Add(new GameEvent(EventKind.Shot, p.Eye, Arg: (int)def.Id));
 
@@ -68,7 +119,7 @@ public sealed class GameWorld
         switch (def.Mode)
         {
             case FireMode.Melee:
-                Hitscan(p.Eye, dir, def.Range, def.Damage, false);
+                Hitscan(p, p.Eye, dir, def.Range, def.Damage, false);
                 break;
             case FireMode.Hitscan:
                 var right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
@@ -76,43 +127,49 @@ public sealed class GameWorld
                 for (int i = 0; i < def.Pellets; i++)
                 {
                     var d = Vector3.Normalize(dir + right * (Crandom() * def.SpreadX) + up * (Crandom() * def.SpreadY));
-                    Hitscan(p.Eye, d, def.Range, def.Damage, true);
+                    Hitscan(p, p.Eye, d, def.Range, def.Damage, true);
                 }
                 break;
             case FireMode.Nail:
-                // Nailguns alternate a small sideways offset in Q1; we keep a straight shot.
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Nail, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Expires = Time + 6 });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Nail, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Expires = Time + 6 });
                 break;
             case FireMode.Rocket:
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Rocket, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 5 });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Rocket, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 5 });
                 break;
             case FireMode.Grenade:
-                // Q1: forward*600 + up*200 (+ right*10 kick), bounces, 2.5s fuse.
+                // Q1: forward*600 + up*200, bounces, 2.5s fuse.
                 var up2 = Vector3.Normalize(Vector3.Cross(Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY)), dir));
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Grenade, Pos = p.Eye, Vel = dir * def.ProjectileSpeed + up2 * 200f, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 2.5f });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Grenade, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed + up2 * 200f, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 2.5f });
                 break;
         }
     }
 
-    float Crandom() => (float)(_rng.NextDouble() * 2 - 1);
+    float Crandom() => (float)(Rng.NextDouble() * 2 - 1);
 
-    void Hitscan(Vector3 origin, Vector3 dir, float range, int damage, bool tracer)
+    static Aabb Box(Player p) => Aabb.FromCenter(p.Move.Position, MoveVars.Half);
+
+    void Hitscan(Player shooter, Vector3 origin, Vector3 dir, float range, int damage, bool tracer)
     {
         var wall = Map.TraceRay(origin, origin + dir * range);
         float best = wall.Fraction * range;
-        Target? victim = null;
+        object? victim = null;
         foreach (var t in Targets)
         {
             if (!t.Alive) continue;
-            if (World.RayVsBox(origin, dir * range, t.Bounds.Min, t.Bounds.Max, out float f, out _))
-            {
-                float dist = f * range;
-                if (dist <= best) { best = dist; victim = t; }
-            }
+            if (World.RayVsBox(origin, dir * range, t.Bounds.Min, t.Bounds.Max, out float f, out _) && f * range <= best)
+            { best = f * range; victim = t; }
+        }
+        foreach (var o in Combatants)
+        {
+            if (o == shooter || !o.Alive) continue;
+            var b = Box(o);
+            if (World.RayVsBox(origin, dir * range, b.Min, b.Max, out float f, out _) && f * range <= best)
+            { best = f * range; victim = o; }
         }
         var hit = origin + dir * best;
         if (tracer) Events.Add(new GameEvent(EventKind.Tracer, origin, hit));
-        if (victim != null) Damage(victim, damage, dir, Player);
+        if (victim is Target t2) Damage(t2, damage, dir, shooter);
+        else if (victim is Player p2) DamagePlayer(p2, damage, dir, shooter, knock: false);
         else if (wall.Hit) Events.Add(new GameEvent(EventKind.Impact, hit, wall.Normal));
     }
 
@@ -130,10 +187,10 @@ public sealed class GameWorld
             var wall = Map.TraceBox(pr.Pos, end, half);
             var segEnd = wall.EndPos;
 
-            Target? hitT = FirstTargetHit(pr.Pos, segEnd);
-            if (hitT != null)
+            object? hitObj = FirstHit(pr, pr.Pos, segEnd);
+            if (hitObj != null)
             {
-                Detonate(pr, hitT, pr.Pos);
+                Detonate(pr, hitObj, pr.Pos);
                 Projectiles.RemoveAt(i);
                 continue;
             }
@@ -163,61 +220,67 @@ public sealed class GameWorld
         }
     }
 
-    Target? FirstTargetHit(Vector3 a, Vector3 b)
+    /// <summary>First target dummy or opponent (never the owner) touched by the projectile this step.</summary>
+    object? FirstHit(Projectile pr, Vector3 a, Vector3 b)
     {
         var d = b - a;
         float len = d.Length();
-        Target? best = null; float bestT = float.MaxValue;
-        foreach (var t in Targets)
+        object? best = null; float bestT = float.MaxValue;
+
+        void Consider(object o, Aabb box)
         {
-            if (!t.Alive) continue;
-            var box = t.Bounds;
-            bool inside = box.Overlaps(new Aabb(a - NailHalf, a + NailHalf));
-            if (inside) return t;
+            if (box.Overlaps(new Aabb(a - NailHalf, a + NailHalf))) { if (bestT > 0) { best = o; bestT = 0; } return; }
             if (len > 1e-6f && World.RayVsBox(a, d, box.Min - NailHalf, box.Max + NailHalf, out float f, out _) && f < bestT)
-            { bestT = f; best = t; }
+            { bestT = f; best = o; }
         }
+        foreach (var t in Targets) if (t.Alive) Consider(t, t.Bounds);
+        foreach (var o in Combatants) if (o != pr.Owner && o.Alive) Consider(o, Box(o));
         return best;
     }
 
-    void Detonate(Projectile pr, Target? direct, Vector3 at)
+    void Detonate(Projectile pr, object? direct, Vector3 at)
     {
+        var owner = pr.Owner ?? Player;
         var dir = pr.Vel.LengthSquared() > 0 ? Vector3.Normalize(pr.Vel) : Vector3.UnitY;
         if (pr.Kind == ProjectileKind.Nail)
         {
-            if (direct != null) Damage(direct, pr.Damage, dir, Player);
+            if (direct is Target t) Damage(t, pr.Damage, dir, owner);
+            else if (direct is Player pl) DamagePlayer(pl, pr.Damage, dir, owner, knock: false);
             Events.Add(new GameEvent(EventKind.Impact, at, -dir));
             return;
         }
         // Rocket direct hits deal 100-120 damage on the entity struck (Q1: 100 + rand(0..20)).
         if (direct != null && pr.Kind == ProjectileKind.Rocket)
-            Damage(direct, 100 + (int)(_rng.NextDouble() * 20), dir, Player, knock: false);
-        RadiusDamage(at, pr.Splash, pr.Damage, direct);
+        {
+            int dmg = 100 + (int)(Rng.NextDouble() * 20);
+            if (direct is Target t) Damage(t, dmg, dir, owner, knock: false);
+            else if (direct is Player pl) DamagePlayer(pl, dmg, dir, owner, knock: false);
+        }
+        RadiusDamage(at, pr.Splash, pr.Damage, direct, owner);
         Events.Add(new GameEvent(EventKind.Explosion, at));
     }
 
     /// <summary>Q1 T_RadiusDamage: points = dmg - 0.5 * distance(origin, target center); self damage halved.</summary>
-    public void RadiusDamage(Vector3 at, float radius, int damage, Target? ignore)
+    public void RadiusDamage(Vector3 at, float radius, int damage, object? ignore, Player? attacker = null)
     {
-        var p = Player;
-        if (p.Alive)
+        attacker ??= Player;
+        foreach (var v in Combatants.ToList())
         {
-            float pts = damage - 0.5f * Vector3.Distance(at, p.Move.Position);
-            if (pts > 0 && Visible(at, p.Move.Position))
-            {
-                pts *= 0.5f;
-                Knock(ref p.Move.Velocity, p.Move.Position - at, pts);
-                if (p.Move.Velocity.Y > 0) p.Move.OnGround = false;
-                if (!p.God) p.Health -= (int)pts;
-                Events.Add(new GameEvent(EventKind.Hurt, at));
-            }
+            if (!v.Alive || v == ignore) continue;
+            var center = v.Move.Position;
+            float pts = damage - 0.5f * Vector3.Distance(at, center);
+            if (pts <= 0 || !Visible(at, center)) continue;
+            if (v == attacker) pts *= 0.5f;
+            Knock(ref v.Move.Velocity, center - at, pts);
+            if (v.Move.Velocity.Y > 0) v.Move.OnGround = false;
+            DamagePlayer(v, (int)pts, default, attacker, knock: false);
         }
         foreach (var t in Targets)
         {
             if (!t.Alive || t == ignore) continue;
             float pts = damage - 0.5f * Vector3.Distance(at, t.Origin);
             if (pts > 0 && Visible(at, t.Origin))
-                Damage(t, (int)pts, Vector3.Normalize(t.Origin - at), p);
+                Damage(t, (int)pts, Vector3.Normalize(t.Origin - at), attacker);
         }
     }
 
@@ -242,17 +305,35 @@ public sealed class GameWorld
             Events.Add(new GameEvent(EventKind.Kill, t.Origin));
         }
     }
+
+    public void DamagePlayer(Player v, int dmg, Vector3 dir, Player? by, bool knock = true)
+    {
+        if (!v.Alive || dmg <= 0) return;
+        if (knock) v.Move.Velocity += dir * dmg * 8f;
+        if (!v.God) v.Health -= dmg;
+        Events.Add(new GameEvent(EventKind.Hurt, v.Move.Position, Arg: v == Player ? 1 : 0));
+        if (v.Health <= 0) Die(v, by);
+    }
+
+    public void Die(Player v, Player? by)
+    {
+        v.Health = Math.Min(v.Health, 0);
+        v.Deaths++;
+        v.RespawnAt = Time + RespawnDelay;
+        if (by != null && by != v) { by.Frags++; Console.Print($"{by.Name} killed {v.Name}"); }
+        else { v.Frags--; Console.Print($"{v.Name} suicided"); }
+        Events.Add(new GameEvent(EventKind.Kill, v.Move.Position, Arg: v == Player ? 1 : 0));
+    }
 }
 
 public static class GameWorldExtensions
 {
-    /// <summary>Full restore: position, health, ammo, and target dummies.</summary>
+    /// <summary>Full restore: you, bots, dummies and projectiles.</summary>
     public static void Respawn(this GameWorld g)
     {
-        var p = g.Player;
-        p.Move.Position = g.SpawnPoint; p.Move.Velocity = default; p.Move.OnGround = false;
-        p.Health = p.MaxHealth; p.Shells = 25; p.Nails = 100; p.Rockets = 10;
         g.Projectiles.Clear();
+        g.Reset(g.Player, g.SpawnPoint);
+        foreach (var b in g.Bots) g.RespawnPlayer(b.Body);
         foreach (var t in g.Targets) { t.Health = 100; t.Velocity = default; }
     }
 }

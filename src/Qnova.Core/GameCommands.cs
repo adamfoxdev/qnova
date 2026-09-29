@@ -42,6 +42,10 @@ public static class GameCommands
         c.AddCvar("sv_stepheight", s.StepHeight, "Max ledge height walked up", v => s.StepHeight = v);
         c.AddCvar("sv_autohop", 0, "Hold jump to keep bunny-hopping (0/1)", v => p.Move.AutoHop = v != 0);
 
+        // ---- bots ----
+        c.AddCvar("bot_ai", 1, "Bots think and act (0 freezes them)", v => g.BotAi = v != 0);
+        c.AddCvar("bot_skill", g.BotSkill, "Bot skill 1 (easy) to 5 (hard)", v => g.BotSkill = (int)Math.Clamp(v, 1, 5));
+
         // ---- cheat variables ----
         c.AddCvar("sv_infiniteammo", 0, "Weapons use no ammo (0/1)", v => g.InfiniteAmmo = v != 0, cheat: true);
         c.AddCvar("sv_god", 0, "No self damage (0/1)", v => p.God = v != 0, cheat: true);
@@ -91,7 +95,19 @@ public static class GameCommands
             var m = p.Move;
             c.Print($"pos {GameConsole.Fmt(m.Position.X)} {GameConsole.Fmt(m.Position.Y)} {GameConsole.Fmt(m.Position.Z)}  vel {GameConsole.Fmt(m.Velocity.X)} {GameConsole.Fmt(m.Velocity.Y)} {GameConsole.Fmt(m.Velocity.Z)}");
         });
-        c.AddCommand("kill", "kill", "Suicide", a => { p.Health = 0; c.Print("you suicided"); });
+        c.AddCommand("kill", "kill", "Suicide", a => g.Die(p, p));
+        c.AddCommand("bot_add", "bot_add [count]", "Add bots", a =>
+        {
+            int n = a.Length > 0 && int.TryParse(a[0], out var k) ? Math.Clamp(k, 1, 16) : 1;
+            for (int i = 0; i < n; i++) g.AddBot();
+            c.Print($"{g.Bots.Count} bot(s) in game");
+        });
+        c.AddCommand("bot_removeall", "bot_removeall", "Remove every bot", a => { c.Print($"removed {g.Bots.Count} bot(s)"); g.Bots.Clear(); });
+        c.AddCommand("bots", "bots", "List bots and the scoreboard", a =>
+        {
+            foreach (var pl in g.Combatants)
+                c.Print($"{pl.Name,-8} frags {pl.Frags,3}  deaths {pl.Deaths,3}  health {Math.Max(0, pl.Health),3}{(pl.Alive ? "" : "  (dead)")}");
+        });
         c.AddCommand("respawn", "respawn", "Reset player, ammo and dummies", a => { g.Respawn(); c.Print("respawned"); });
         c.AddCommand("spawn", "spawn [count]", "Spawn target dummies where you're looking", a =>
         {

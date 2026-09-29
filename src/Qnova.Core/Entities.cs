@@ -11,8 +11,11 @@ public sealed class Player
     public HashSet<WeaponId> Owned = new(Enum.GetValues<WeaponId>());
     public WeaponId Current = WeaponId.Shotgun;
     public float NextFire;
-    public int Frags;
+    public int Frags, Deaths;
     public bool God;
+    public string Name = "Player";
+    public bool IsBot;
+    public float RespawnAt;   // when dead: time at which to respawn
 
     public Player(World w, Vector3 spawn, MoveSettings? settings = null) { Move = new PlayerMove(w, settings) { Position = spawn }; }
 
@@ -51,6 +54,7 @@ public sealed class Projectile
 {
     public ProjectileKind Kind;
     public Vector3 Pos, Vel;
+    public Player? Owner;
     public float Expires;
     public int Damage;
     public float Splash;
