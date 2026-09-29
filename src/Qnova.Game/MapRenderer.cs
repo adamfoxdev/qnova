@@ -13,7 +13,7 @@ sealed class MapRenderer
     public const int MaxLights = 16;
 
     readonly Shader _shader;
-    readonly int _locView, _locLightPos, _locLightCol, _locTime;
+    readonly int _locView, _locLightPos, _locLightCol, _locTime, _locPlain;
     readonly Vector4[] _pos = new Vector4[MaxLights];
     readonly Vector3[] _col = new Vector3[MaxLights];
 
@@ -42,6 +42,7 @@ uniform vec3 viewPos;
 uniform vec4 lightPos[16];   // xyz = position, w = radius
 uniform vec3 lightCol[16];
 uniform float uTime;
+uniform float uPlain;      // 1 = plain flat-shaded blocks: no textures, lights or fog
 const vec3 fogCol = vec3(0.030, 0.023, 0.025);
 
 float hash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
@@ -118,6 +119,15 @@ void main()
     vec2 q = (abs(n.y) > 0.5) ? fragPos.xz : (abs(n.x) > 0.5 ? fragPos.zy : fragPos.xy);
     q *= 32.0;
 
+    if (uPlain > 0.5)
+    {
+        // classic flat look: one colour per box, only the face direction shades it
+        float shade = n.y > 0.5 ? 1.0 : (n.y < -0.5 ? 0.45 : (abs(n.x) > 0.5 ? 0.78 : 0.64));
+        vec3 c = (mat == 5) ? base * 1.15 : base * shade * 1.05;
+        finalColor = vec4(min(c, vec3(1.0)), 1.0);
+        return;
+    }
+
     float fd = length(viewPos - fragPos);
     if (mat == 5)   // emissive fixtures ignore lighting
     {
@@ -156,12 +166,13 @@ void main()
         _locLightPos = Raylib.GetShaderLocation(_shader, "lightPos");
         _locLightCol = Raylib.GetShaderLocation(_shader, "lightCol");
         _locTime = Raylib.GetShaderLocation(_shader, "uTime");
+        _locPlain = Raylib.GetShaderLocation(_shader, "uPlain");
     }
 
     public void Unload() => Raylib.UnloadShader(_shader);
 
     /// <summary>Pick the most influential lights for this view and upload the uniforms.</summary>
-    public void Frame(Vector3 camera, IEnumerable<LightSrc> lights, float time)
+    public void Frame(Vector3 camera, IEnumerable<LightSrc> lights, float time, bool plain)
     {
         var chosen = lights.OrderBy(l => Vector3.Distance(l.Pos, camera) - l.Radius).Take(MaxLights).ToList();
         for (int i = 0; i < MaxLights; i++)
@@ -174,6 +185,7 @@ void main()
         Raylib.SetShaderValueV(_shader, _locLightPos, _pos, ShaderUniformDataType.Vec4, MaxLights);
         Raylib.SetShaderValueV(_shader, _locLightCol, _col, ShaderUniformDataType.Vec3, MaxLights);
         Raylib.SetShaderValue(_shader, _locTime, time, ShaderUniformDataType.Float);
+        Raylib.SetShaderValue(_shader, _locPlain, plain ? 1f : 0f, ShaderUniformDataType.Float);
     }
 
     public void Begin() => Raylib.BeginShaderMode(_shader);

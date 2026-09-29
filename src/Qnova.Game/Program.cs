@@ -52,9 +52,11 @@ bool quit = false;
 
 // client-side variables and commands
 float sens = 0.10f, fov = 90f, timescale = 1f;
+bool plainBlocks = false;
 game.Console.AddCvar("sensitivity", sens, "Mouse sensitivity (degrees per pixel)", v => sens = Math.Max(0f, v));
 game.Console.AddCvar("fov", fov, "Vertical field of view in degrees", v => fov = Math.Clamp(v, 30f, 140f));
 game.Console.AddCvar("volume", 1f, "Master volume 0-1", v => { if (audioOk) Raylib.SetMasterVolume(Math.Clamp(v, 0f, 1f)); });
+game.Console.AddCvar("r_plain", 0f, "Render the map as plain flat-shaded blocks (0/1)", v => plainBlocks = v != 0);
 game.Console.AddCvar("host_timescale", 1f, "Game speed multiplier (slow-mo / fast-forward)", v => timescale = Math.Clamp(v, 0.05f, 8f), cheat: true);
 game.Console.AddCommand("quit", "quit", "Exit the game", _ => quit = true);
 game.Console.AddCommand("mute", "mute", "Toggle sound", _ => { muted = !muted; game.Console.Print(muted ? "sound off" : "sound on"); });
@@ -256,7 +258,7 @@ while (!quit && !Raylib.WindowShouldClose())
         float t01 = (now2 - d.Start) / d.Duration;
         lightSrcs.Add(new LightSrc(d.Pos, d.Color * (1f - t01) * (1f - t01), d.Radius * (0.6f + 0.4f * t01)));
     }
-    mapRenderer.Frame(p.Eye, lightSrcs, now2);
+    mapRenderer.Frame(p.Eye, lightSrcs, now2, plainBlocks);
 
     mapRenderer.Begin();
     foreach (var sol in game.Map.Solids)
