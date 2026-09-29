@@ -85,16 +85,67 @@ float hurtUntil = 0;
 long seenLines = game.Console.TotalPrinted;
 var feed = new List<(string Text, float Until)>();
 
-var keys = new (KeyboardKey Key, WeaponId Id)[]
+// ---- key bindings: codes are upper-case strings ("W", "SPACE", "MOUSE1", "MWHEELUP"); KeyboardKey names double as codes ----
+var keyCache = new Dictionary<string, KeyboardKey?>();
+KeyboardKey? KeyOf(string code)
 {
-    (KeyboardKey.One, WeaponId.Axe), (KeyboardKey.Two, WeaponId.Shotgun), (KeyboardKey.Three, WeaponId.SuperShotgun),
-    (KeyboardKey.Four, WeaponId.Nailgun), (KeyboardKey.Five, WeaponId.SuperNailgun),
-    (KeyboardKey.Six, WeaponId.GrenadeLauncher), (KeyboardKey.Seven, WeaponId.RocketLauncher),
+    if (keyCache.TryGetValue(code, out var cached)) return cached;
+    KeyboardKey? found = null;
+    if (!code.All(char.IsDigit) && Enum.TryParse<KeyboardKey>(code, true, out var k) && Enum.IsDefined(k) && k != KeyboardKey.Null) found = k;
+    keyCache[code] = found;
+    return found;
+}
+MouseButton? MouseOf(string code) => code switch
+{
+    "MOUSE1" => MouseButton.Left, "MOUSE2" => MouseButton.Right, "MOUSE3" => MouseButton.Middle,
+    "MOUSE4" => MouseButton.Side, "MOUSE5" => MouseButton.Extra, _ => null,
 };
+bool IsValidCode(string code) => MouseOf(code) != null || code is "MWHEELUP" or "MWHEELDOWN" || KeyOf(code) != null;
+bool CodeDown(string code) => MouseOf(code) is { } mb ? Raylib.IsMouseButtonDown(mb) : KeyOf(code) is { } k && Raylib.IsKeyDown(k);
+bool CodePressed(string code, float wheel) =>
+    code == "MWHEELUP" ? wheel > 0 : code == "MWHEELDOWN" ? wheel < 0
+    : MouseOf(code) is { } mb ? Raylib.IsMouseButtonPressed(mb) : KeyOf(code) is { } k && Raylib.IsKeyPressed(k);
+bool ActionDown(InputAction a) => game.Bindings.Get(a) is { } c && CodeDown(c);
+bool ActionPressed(InputAction a, float wheel) => game.Bindings.Get(a) is { } c && CodePressed(c, wheel);
+string KeyName(InputAction a) => KeyBindings.Display(game.Bindings.Get(a));
+
+game.Bindings.Validator = IsValidCode;
+// Bindings persist in <config dir>/qnova/bindings.cfg (~/.config on Linux, %APPDATA% on Windows); --no-config skips it.
+// (QNOVA_CONFIG_DIR overrides it.) GetFolderPath can return "" on minimal systems, so fall back rather than writing to the cwd.
+string ConfigDir()
+{
+    var over = Environment.GetEnvironmentVariable("QNOVA_CONFIG_DIR");
+    if (!string.IsNullOrEmpty(over)) return over;
+    var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+    if (!string.IsNullOrEmpty(xdg)) return Path.Combine(xdg, "qnova");
+    foreach (var f in new[] { Environment.SpecialFolder.ApplicationData, Environment.SpecialFolder.LocalApplicationData })
+    {
+        var p = Environment.GetFolderPath(f);
+        if (!string.IsNullOrEmpty(p)) return Path.Combine(p, "qnova");
+    }
+    var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    return !string.IsNullOrEmpty(home) ? Path.Combine(home, ".config", "qnova") : Path.Combine(AppContext.BaseDirectory, "config");
+}
+string bindingsFile = Path.Combine(ConfigDir(), "bindings.cfg");
+if (!args.Contains("--no-config"))
+{
+    try { if (File.Exists(bindingsFile)) game.Bindings.LoadConfig(File.ReadAllLines(bindingsFile)); }
+    catch (Exception e) { game.Console.Print($"couldn't read bindings: {e.Message}"); }
+    game.Bindings.Changed += () =>
+    {
+        try { Directory.CreateDirectory(Path.GetDirectoryName(bindingsFile)!); File.WriteAllLines(bindingsFile, game.Bindings.ToConfigLines()); }
+        catch (Exception e) { game.Console.Print($"couldn't save bindings: {e.Message}"); }
+    };
+}
 
 if (devStart) { started = true; inMenu = false; Raylib.DisableCursor(); }
 if (args.Contains("--paused")) started = true;               // show the pause variant of the menu
 if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
+if (args.Contains("--keybinds"))                       // open Options > Key Bindings (add --capture to wait for a key on JUMP)
+{
+    menu.SetSelected(1); menu.Select(); menu.SetSelected(7); menu.Select(); menu.SetSelected(4);
+    if (args.Contains("--capture")) menu.Select();
+}
 if (devPos != null)
 {
     var pp = devPos.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
@@ -113,34 +164,62 @@ while (!quit && !Raylib.WindowShouldClose())
         int sw = Raylib.GetScreenWidth(), sh = Raylib.GetScreenHeight();
         splash.Update(Raylib.GetFrameTime(), sw, sh);
 
-        bool Pressed(KeyboardKey k) => Raylib.IsKeyPressed(k) || Raylib.IsKeyPressedRepeat(k);
-        if (Pressed(KeyboardKey.Down) || Pressed(KeyboardKey.S)) { if (menu.Move(1)) PlayUi(SoundId.MenuMove); }
-        if (Pressed(KeyboardKey.Up) || Pressed(KeyboardKey.W)) { if (menu.Move(-1)) PlayUi(SoundId.MenuMove); }
-        if (Pressed(KeyboardKey.Left) || Pressed(KeyboardKey.A)) { if (menu.Adjust(-1)) PlayUi(SoundId.MenuMove); }
-        if (Pressed(KeyboardKey.Right) || Pressed(KeyboardKey.D)) { if (menu.Adjust(1)) PlayUi(SoundId.MenuMove); }
-        if (Raylib.IsKeyPressed(KeyboardKey.Enter) || Raylib.IsKeyPressed(KeyboardKey.KpEnter) || Raylib.IsKeyPressed(KeyboardKey.Space))
-        { PlayUi(SoundId.MenuSelect); menu.Select(); }
-        if (Raylib.IsKeyPressed(KeyboardKey.Escape) && menuEnteredFrame != frameCount - 1)
+        if (menu.Capturing != null)
         {
-            if (menu.Back()) PlayUi(SoundId.MenuMove);
-            else if (started) { inMenu = false; skipMouse = true; Raylib.DisableCursor(); }   // Esc at the pause menu resumes
-        }
-
-        // mouse: hover highlights, click activates (left half of a value row decreases, right half increases)
-        var mp = Raylib.GetMousePosition();
-        var rects = splash.ItemRects;
-        bool mouseMoved = Raylib.GetMouseDelta() != Vector2.Zero;
-        for (int i = 0; i < rects.Count; i++)
-        {
-            if (!Raylib.CheckCollisionPointRec(mp, rects[i])) continue;
-            if (mouseMoved && menu.SetSelected(i)) PlayUi(SoundId.MenuMove, 0.5f);
-            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && i == menu.Selected)
+            // Rebinding: the next key, mouse button or wheel notch becomes the binding. Esc cancels, Backspace/Delete unbinds.
+            string? code = null; bool cancel = false, unbind = false;
+            int kp;
+            while ((kp = (int)Raylib.GetKeyPressed()) != 0)
             {
-                var item = menu.SelectedItem;
-                if (item.Value != null && item.Adjustable) menu.Adjust(mp.X < rects[i].X + rects[i].Width / 2f ? -1 : 1);
-                else menu.Select();
-                PlayUi(SoundId.MenuSelect);
+                var key = (KeyboardKey)kp;
+                if (key == KeyboardKey.Escape) cancel = true;
+                else if (key == KeyboardKey.Backspace || key == KeyboardKey.Delete) unbind = true;
+                else code ??= key.ToString().ToUpperInvariant();
             }
+            foreach (var (mb, name) in new[] { (MouseButton.Left, "MOUSE1"), (MouseButton.Right, "MOUSE2"), (MouseButton.Middle, "MOUSE3"), (MouseButton.Side, "MOUSE4"), (MouseButton.Extra, "MOUSE5") })
+                if (Raylib.IsMouseButtonPressed(mb)) code ??= name;
+            float wh = Raylib.GetMouseWheelMove();
+            if (wh > 0) code ??= "MWHEELUP"; else if (wh < 0) code ??= "MWHEELDOWN";
+
+            if (cancel) { menu.CancelCapture(); PlayUi(SoundId.MenuMove); }
+            else if (unbind) { menu.UnbindCaptured(); PlayUi(SoundId.MenuSelect); }
+            else if (code != null && menu.Capture(code)) PlayUi(SoundId.MenuSelect);
+        }
+        else
+        {
+            bool Pressed(KeyboardKey k) => Raylib.IsKeyPressed(k) || Raylib.IsKeyPressedRepeat(k);
+            if (Pressed(KeyboardKey.Down) || Pressed(KeyboardKey.S)) { if (menu.Move(1)) PlayUi(SoundId.MenuMove); }
+            if (Pressed(KeyboardKey.Up) || Pressed(KeyboardKey.W)) { if (menu.Move(-1)) PlayUi(SoundId.MenuMove); }
+            if (Pressed(KeyboardKey.Left) || Pressed(KeyboardKey.A)) { if (menu.Adjust(-1)) PlayUi(SoundId.MenuMove); }
+            if (Pressed(KeyboardKey.Right) || Pressed(KeyboardKey.D)) { if (menu.Adjust(1)) PlayUi(SoundId.MenuMove); }
+            float scroll = Raylib.GetMouseWheelMove();
+            if (scroll != 0 && menu.Move(scroll > 0 ? -1 : 1)) PlayUi(SoundId.MenuMove, 0.5f);
+            if (Raylib.IsKeyPressed(KeyboardKey.Enter) || Raylib.IsKeyPressed(KeyboardKey.KpEnter) || Raylib.IsKeyPressed(KeyboardKey.Space))
+            { PlayUi(SoundId.MenuSelect); menu.Select(); }
+            if (Raylib.IsKeyPressed(KeyboardKey.Escape) && menuEnteredFrame != frameCount - 1)
+            {
+                if (menu.Back()) PlayUi(SoundId.MenuMove);
+                else if (started) { inMenu = false; skipMouse = true; Raylib.DisableCursor(); }   // Esc at the pause menu resumes
+            }
+
+            // mouse: hover highlights, click activates (left half of a value row decreases, right half increases)
+            var mp = Raylib.GetMousePosition();
+            var rects = splash.ItemRects;
+            bool mouseMoved = Raylib.GetMouseDelta() != Vector2.Zero;
+            foreach (var (rect, idx) in rects)
+            {
+                if (!Raylib.CheckCollisionPointRec(mp, rect)) continue;
+                if (mouseMoved && menu.SetSelected(idx)) PlayUi(SoundId.MenuMove, 0.5f);
+                if (Raylib.IsMouseButtonPressed(MouseButton.Left) && idx == menu.Selected)
+                {
+                    var item = menu.SelectedItem;
+                    if (item.Value != null && item.Adjustable) menu.Adjust(mp.X < rect.X + rect.Width / 2f ? -1 : 1);
+                    else menu.Select();
+                    PlayUi(SoundId.MenuSelect);
+                }
+            }
+            // The Enter/Space/click that started a capture is still queued as a key press; drop it so it isn't captured.
+            if (menu.Capturing != null) while (Raylib.GetKeyPressed() != 0) { }
         }
 
         Raylib.BeginDrawing();
@@ -164,28 +243,31 @@ while (!quit && !Raylib.WindowShouldClose())
     skipMouse = false;
     yaw -= md.X * sens;
     pitch = Math.Clamp(pitch - md.Y * sens, -89f, 89f);
-    fireHeld = !paused && Raylib.IsMouseButtonDown(MouseButton.Left);
+    fireHeld = !paused && ActionDown(InputAction.Fire);
     WeaponId? sel = null;
-    if (!paused) foreach (var (k, id) in keys) if (Raylib.IsKeyPressed(k)) sel = id;
-    var wheel = paused ? 0 : Raylib.GetMouseWheelMove();
-    if (wheel != 0)
+    float wheel = paused ? 0 : Raylib.GetMouseWheelMove();
+    if (!paused)
+        for (int wi = 0; wi < WeaponDef.All.Length; wi++)
+            if (ActionPressed(InputAction.Weapon1 + wi, wheel)) sel = (WeaponId)wi;
+    int cycle = paused ? 0 : (ActionPressed(InputAction.NextWeapon, wheel) ? 1 : 0) - (ActionPressed(InputAction.PrevWeapon, wheel) ? 1 : 0);
+    if (cycle != 0)
     {
         int n = WeaponDef.All.Length, cur = (int)game.Player.Current;
         for (int i = 1; i <= n; i++)   // next (or previous) weapon you actually own
         {
-            var cand = (WeaponId)((cur + (wheel > 0 ? i : n - i)) % n);
+            var cand = (WeaponId)((cur + (cycle > 0 ? i : n - i)) % n);
             if (game.Player.Owned.Contains(cand)) { sel = cand; break; }
         }
     }
-    if (!paused && Raylib.IsKeyPressed(KeyboardKey.M)) game.Console.Execute("mute", echo: false);
-    if (!paused && Raylib.IsKeyPressed(KeyboardKey.R)) game.Respawn();
+    if (!paused && ActionPressed(InputAction.Mute, wheel)) game.Console.Execute("mute", echo: false);
+    if (!paused && ActionPressed(InputAction.Respawn, wheel)) game.Respawn();
 
     var cmd = new UserCmd { Yaw = yaw, Pitch = pitch };
     if (!paused)
     {
-        cmd.Forward = (Raylib.IsKeyDown(KeyboardKey.W) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.S) ? 1 : 0);
-        cmd.Side = (Raylib.IsKeyDown(KeyboardKey.D) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.A) ? 1 : 0);
-        cmd.Jump = Raylib.IsKeyDown(KeyboardKey.Space);
+        cmd.Forward = (ActionDown(InputAction.Forward) ? 1 : 0) - (ActionDown(InputAction.Back) ? 1 : 0);
+        cmd.Side = (ActionDown(InputAction.MoveRight) ? 1 : 0) - (ActionDown(InputAction.MoveLeft) ? 1 : 0);
+        cmd.Jump = ActionDown(InputAction.Jump);
     }
 
     if (!paused) acc += Math.Min(Raylib.GetFrameTime(), 0.1f) * timescale;
@@ -333,7 +415,7 @@ while (!quit && !Raylib.WindowShouldClose())
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
     Raylib.DrawText($"HP {p.Health}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
-    Raylib.DrawText("WASD move  SPACE jump  MOUSE look  LMB fire  1-7/wheel weapon  M mute  R reset  ~ console", 16, 44, 16, Color.Gray);
+    Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
     if (!p.Alive)
     {
         float left = Math.Max(0f, p.RespawnAt - game.Time);
@@ -347,7 +429,9 @@ while (!quit && !Raylib.WindowShouldClose())
         int x = 16 + i * 74, y = 640;
         bool owned = p.Owned.Contains((WeaponId)i), cur = p.Current == (WeaponId)i;
         if (cur) Raylib.DrawRectangleLines(x - 4, y - 3, 68, 26, Color.Yellow);
-        Raylib.DrawText($"{i + 1} {short_[i]}", x, y, 20, owned ? (cur ? Color.Yellow : Color.White) : new Color(90, 90, 90, 255));
+        var kn = KeyName(InputAction.Weapon1 + i);
+        if (kn.Length > 4) kn = kn[..4];   // keep the bar compact for long key names
+        Raylib.DrawText($"{kn} {short_[i]}", x, y, 20, owned ? (cur ? Color.Yellow : Color.White) : new Color(90, 90, 90, 255));
     }
 
     // scoreboard (top right)

@@ -15,6 +15,7 @@ public sealed class GameWorld
     public readonly MoveSettings Settings = new();
     public readonly Player Player;
     public readonly GameConsole Console = new();
+    public readonly KeyBindings Bindings = new();
     public readonly Vector3 SpawnPoint;
     public readonly List<Vector3> SpawnPoints = new();
     public readonly List<Bot> Bots = new();

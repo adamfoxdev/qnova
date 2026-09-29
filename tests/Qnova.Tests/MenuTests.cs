@@ -147,6 +147,8 @@ public class MenuTests
         m.Adjust(-1);                                   // Left/Right toggle too
         Assert.Equal(0f, g.Console.Get("r_plain"));
         m.Move(1);
+        Assert.Equal("KEY BINDINGS", m.SelectedItem.Label());
+        m.Move(1);
         Assert.Equal("BACK", m.SelectedItem.Label());
     }
 

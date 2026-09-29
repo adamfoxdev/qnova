@@ -18,7 +18,7 @@ sealed class Splash
     readonly List<P> _ps = new(600);
     readonly Random _rng = new(1996);
     readonly List<(Vector2 A, Vector2 B)> _cracks = new();      // unit coords over the title box
-    readonly List<Rectangle> _itemRects = new();
+    readonly List<(Rectangle Rect, int Index)> _itemRects = new();   // only the rows currently on screen
     readonly Font _menuFont, _titleFont;
     readonly bool _menuCustom, _titleCustom;
     Texture2D _perlin, _cells;
@@ -28,7 +28,7 @@ sealed class Splash
 
     /// <summary>Raised on every explosion (first flag = the very first one after launch) so the caller can play a sound.</summary>
     public event Action<bool>? Exploded;
-    public IReadOnlyList<Rectangle> ItemRects => _itemRects;
+    public IReadOnlyList<(Rectangle Rect, int Index)> ItemRects => _itemRects;
 
     // Letter geometry: unit polylines (x,y in 0..1, y down). O is a ring, drawn separately.
     static readonly (char Ch, float W)[] Letters = { ('Q', 0.68f), ('N', 0.68f), ('O', 1.00f), ('V', 0.74f), ('A', 0.74f) };
@@ -363,17 +363,22 @@ sealed class Splash
             DrawCentered(menu.Current.Title, small * 1.35f, cx, top + h * 0.04f, C(190, 110, 60, 255), 8f);
 
         _itemRects.Clear();
-        // Options has 7 rows: start higher and squeeze the row pitch so the list always clears the footer hint.
+        // Long lists (options, key bindings) squeeze the row pitch to fit, then scroll a window that follows the highlight.
         float y = top + h * (menu.AtRoot ? 0.14f : 0.105f), bottomLimit = h * 0.90f;
         int n = menu.Current.Items.Count;
-        float step = MathF.Max(size * 1.15f, MathF.Min(size * 1.55f, (bottomLimit - y) / n));
+        float minStep = size * 1.02f;
+        int rows = Math.Clamp((int)((bottomLimit - y) / minStep), 3, n);
+        float step = MathF.Max(minStep, MathF.Min(size * 1.55f, (bottomLimit - y) / rows));
+        int first = Math.Clamp(menu.Selected - rows / 2, 0, n - rows);
         float colW = MathF.Min(w * 0.46f, 640f);
-        for (int i = 0; i < menu.Current.Items.Count; i++)
+        if (first > 0) DrawCentered("^", small, cx, y - small * 1.5f, C(200, 110, 60, 255));
+        if (first + rows < n) DrawCentered("v", small, cx, y + rows * step - small * 0.4f, C(200, 110, 60, 255));
+        for (int i = first; i < first + rows; i++)
         {
             var it = menu.Current.Items[i];
             bool sel = i == menu.Selected;
             string label = it.Label();
-            _itemRects.Add(new Rectangle(cx - colW / 2f - 40, y - 4, colW + 80, size + 10));
+            _itemRects.Add((new Rectangle(cx - colW / 2f - 40, y - 4, colW + 80, size + 10), i));
 
             if (sel)
             {
@@ -401,12 +406,19 @@ sealed class Splash
                 if (sel && it.Adjustable) val = $"< {val} >";
                 DrawText(label, size * 0.72f, cx - colW / 2f, y + size * 0.1f, col, 3f);
                 var vm = Measure(val, size * 0.72f, 3f);
-                DrawText(val, size * 0.72f, cx + colW / 2f - vm.X, y + size * 0.1f, sel ? C(255, 214, 120, 255) : C(170, 150, 128, 255), 3f);
+                var valCol = sel ? C(255, 214, 120, 255) : C(170, 150, 128, 255);
+                if (sel && menu.Capturing != null)   // waiting for a key: pulse red so it is obvious
+                    valCol = MathF.Sin(_time * 12f) > 0 ? C(255, 80, 50, 255) : C(255, 190, 90, 255);
+                DrawText(val, size * 0.72f, cx + colW / 2f - vm.X, y + size * 0.1f, valCol, 3f);
             }
             y += step;
         }
 
-        string hint = menu.AtRoot ? "UP / DOWN  SELECT        ENTER  CONFIRM" : "UP / DOWN  SELECT        LEFT / RIGHT  ADJUST        ESC  BACK";
+        if (menu.Notice != null) DrawCentered(menu.Notice, small * 0.9f, cx, top + h * 0.072f, C(255, 150, 70, 255), 3f);   // under the screen title
+        string hint = menu.Capturing != null ? "PRESS A KEY        ESC  CANCEL        BACKSPACE  UNBIND"
+                    : menu.AtRoot ? "UP / DOWN  SELECT        ENTER  CONFIRM"
+                    : menu.Current.Title == "KEY BINDINGS" ? "UP / DOWN  SELECT        ENTER  REBIND        ESC  BACK"
+                    : "UP / DOWN  SELECT        LEFT / RIGHT  ADJUST        ESC  BACK";
         DrawCentered(hint, small * 0.85f, cx, h - h * 0.065f, C(150, 136, 122, 255), 3f);
         DrawText("QNOVA  //  QUAKE-STYLE ARENA SANDBOX", small * 0.7f, 18, h - small * 1.6f, C(120, 108, 98, 255), 2f, false);
         if (started && menu.AtRoot) DrawCentered("- PAUSED -", small * 0.9f, cx, top + h * 0.09f, C(150, 60, 40, 255), 6f);

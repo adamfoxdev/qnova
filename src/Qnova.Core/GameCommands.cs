@@ -123,6 +123,38 @@ public static class GameCommands
             c.Print($"spawned {n} dummy(s)");
         }, cheat: true);
         c.AddCommand("killtargets", "killtargets", "Remove all dummies", a => { c.Print($"removed {g.Targets.Count} dummies"); g.Targets.Clear(); }, cheat: true);
+        // ---- key bindings ----
+        var kb = g.Bindings;
+        string ActionNames() => string.Join(" ", KeyBindings.All.Select(KeyBindings.Name));
+        c.AddCommand("bind", "bind <key> <action>", "Bind a key or mouse button to an action (bind <key> shows it)", a =>
+        {
+            if (a.Length == 0) { c.Print($"usage: bind <key> <action>   actions: {ActionNames()}"); return; }
+            var key = KeyBindings.Normalize(a[0]);
+            if (a.Length == 1)
+            {
+                var cur = kb.ActionFor(key);
+                c.Print(cur == null ? $"\"{key}\" is not bound" : $"\"{key}\" = {KeyBindings.Name(cur.Value)}");
+                return;
+            }
+            if (!KeyBindings.TryParseAction(a[1], out var action)) { c.Print($"unknown action \"{a[1]}\"; actions: {ActionNames()}"); return; }
+            if (KeyBindings.IsReserved(key)) { c.Print($"\"{key}\" is reserved and cannot be rebound"); return; }
+            if (!kb.Bind(action, key, out var lost)) { c.Print($"\"{key}\" is not a key I know"); return; }
+            c.Print($"{key} -> {KeyBindings.Name(action)}" + (lost != null ? $"  ({KeyBindings.Name(lost.Value)} is now unbound)" : ""));
+        });
+        c.AddCommand("unbind", "unbind <key|action>", "Remove a binding by key or action name", a =>
+        {
+            if (a.Length < 1) { c.Print("usage: unbind <key|action>"); return; }
+            if (kb.UnbindKey(a[0])) c.Print($"\"{KeyBindings.Normalize(a[0])}\" unbound");
+            else if (KeyBindings.TryParseAction(a[0], out var act) && kb.Get(act) != null) { kb.Unbind(act); c.Print($"{KeyBindings.Name(act)} unbound"); }
+            else c.Print($"nothing bound to \"{a[0]}\"");
+        });
+        c.AddCommand("unbindall", "unbindall", "Remove every binding (use bind_reset to restore defaults)", a => { kb.UnbindAll(); c.Print("all bindings removed"); });
+        c.AddCommand("bind_reset", "bind_reset", "Restore the default key bindings", a => { kb.ResetDefaults(); c.Print("key bindings reset to defaults"); });
+        c.AddCommand("bindlist", "bindlist", "List key bindings", a =>
+        {
+            foreach (var act in KeyBindings.All) c.Print($"{KeyBindings.Name(act),-11} {KeyBindings.Display(kb.Get(act))}");
+        });
+
         c.AddCommand("pickups", "pickups", "List pickups and seconds until each returns", a =>
         {
             foreach (var k in g.Pickups)

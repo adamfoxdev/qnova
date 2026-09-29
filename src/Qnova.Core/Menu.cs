@@ -26,32 +26,33 @@ public sealed class MenuModel
     public int Selected { get; private set; }
     public bool AtRoot => _stack.Count == 0;
 
-    MenuModel(MenuScreen root) { Current = root; }
+    MenuModel(MenuScreen root, KeyBindings bindings) { Current = root; _bindings = bindings; }
 
     public MenuItem SelectedItem => Current.Items[Selected];
 
-    public void Push(MenuScreen s) { _stack.Push((Current, Selected)); Current = s; Selected = 0; }
+    public void Push(MenuScreen s) { _stack.Push((Current, Selected)); Current = s; Selected = 0; Notice = null; }
 
     /// <summary>Move the highlight; wraps around. Returns true if it moved.</summary>
     public bool Move(int dir)
     {
         int n = Current.Items.Count;
-        if (n < 2) return false;
+        if (n < 2 || Capturing != null) return false;
         Selected = ((Selected + dir) % n + n) % n;
+        Notice = null;
         return true;
     }
 
     public bool SetSelected(int i)
     {
-        if (i < 0 || i >= Current.Items.Count || i == Selected) return false;
-        Selected = i; return true;
+        if (Capturing != null || i < 0 || i >= Current.Items.Count || i == Selected) return false;
+        Selected = i; Notice = null; return true;
     }
 
     /// <summary>Left/Right on an adjustable item. Returns true if the item handles it.</summary>
     public bool Adjust(int dir)
     {
         var item = SelectedItem;
-        if (item.OnAdjust == null) return false;
+        if (Capturing != null || item.OnAdjust == null) return false;
         item.OnAdjust(dir);
         return true;
     }
@@ -59,17 +60,54 @@ public sealed class MenuModel
     /// <summary>Enter / click. Adjustable items without a select action step forward (toggles).</summary>
     public void Select()
     {
+        if (Capturing != null) return;
         var item = SelectedItem;
         if (item.OnSelect != null) item.OnSelect();
         else item.OnAdjust?.Invoke(1);
     }
 
-    /// <summary>Escape: pop back one screen. Returns false at the root (caller decides: resume or ignore).</summary>
+    /// <summary>Escape: cancel a pending key capture, else pop back one screen.
+    /// Returns false at the root (caller decides: resume or ignore).</summary>
     public bool Back()
     {
+        if (Capturing != null) { CancelCapture(); return true; }
         if (_stack.Count == 0) return false;
         (Current, Selected) = _stack.Pop();
         return true;
+    }
+
+    // ---- key capture (rebinding) ----
+
+    readonly KeyBindings _bindings;
+
+    /// <summary>The action waiting for a key press, or null. While set, the frontend feeds the next key to <see cref="Capture"/>.</summary>
+    public InputAction? Capturing { get; private set; }
+
+    /// <summary>Short feedback for the bindings screen ("W taken from MOVE FORWARD"); cleared when navigating.</summary>
+    public string? Notice { get; private set; }
+
+    public void BeginCapture(InputAction action) { Capturing = action; Notice = null; }
+    public void CancelCapture() => Capturing = null;
+
+    /// <summary>Bind the captured code to the waiting action. Returns false if the code is unusable (reserved or invalid);
+    /// capture then stays active so the player can try another key.</summary>
+    public bool Capture(string code)
+    {
+        if (Capturing is not { } action) return false;
+        if (!_bindings.Bind(action, code, out var lost))
+        {
+            Notice = $"CAN'T USE {KeyBindings.Display(code)}";
+            return false;
+        }
+        Capturing = null;
+        Notice = lost is { } l ? $"{KeyBindings.Display(code)} TAKEN FROM {KeyBindings.Label(l)}" : null;
+        return true;
+    }
+
+    /// <summary>Backspace / Delete while capturing: leave the action unbound.</summary>
+    public void UnbindCaptured()
+    {
+        if (Capturing is { } a) { _bindings.Unbind(a); Capturing = null; Notice = null; }
     }
 
     public const int MaxBots = 4;
@@ -80,7 +118,8 @@ public sealed class MenuModel
     {
         var options = new MenuScreen { Title = "OPTIONS" };
         var root = new MenuScreen { Title = "QNOVA" };
-        var m = new MenuModel(root);
+        var keys = new MenuScreen { Title = "KEY BINDINGS" };
+        var m = new MenuModel(root, g.Bindings);
 
         options.Items.Add(Slider(g, "MOUSE SENSITIVITY", "sensitivity", 0.02f, 0.5f, 0.01f, "0.00"));
         options.Items.Add(Slider(g, "FIELD OF VIEW", "fov", 60f, 120f, 5f, "0"));
@@ -111,7 +150,22 @@ public sealed class MenuModel
                 if (g.Console.TryGet("r_plain", out var v)) g.Console.Execute($"r_plain {(v != 0 ? 0 : 1)}", echo: false);
             },
         });
+        options.Items.Add(new MenuItem { Label = () => "KEY BINDINGS", OnSelect = () => m.Push(keys) });
         options.Items.Add(new MenuItem { Label = () => "BACK", OnSelect = () => m.Back() });
+
+        // one row per action: Enter, then press the new key (Esc cancels, Backspace unbinds)
+        foreach (var action in KeyBindings.All)
+        {
+            var a = action;
+            keys.Items.Add(new MenuItem
+            {
+                Label = () => KeyBindings.Label(a),
+                Value = () => m.Capturing == a ? "PRESS A KEY..." : KeyBindings.Display(g.Bindings.Get(a)),
+                OnSelect = () => m.BeginCapture(a),
+            });
+        }
+        keys.Items.Add(new MenuItem { Label = () => "RESET TO DEFAULTS", OnSelect = () => { g.Bindings.ResetDefaults(); m.Notice = "BINDINGS RESET TO DEFAULTS"; } });
+        keys.Items.Add(new MenuItem { Label = () => "BACK", OnSelect = () => m.Back() });
 
         root.Items.Add(new MenuItem { Label = () => hasStarted() ? "RESUME GAME" : "START GAME", OnSelect = start });
         root.Items.Add(new MenuItem { Label = () => "OPTIONS", OnSelect = () => m.Push(options) });
