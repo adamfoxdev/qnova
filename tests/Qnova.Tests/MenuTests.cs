@@ -31,10 +31,10 @@ public class MenuTests
     public void Root_menu_has_start_options_quit_and_wraps()
     {
         var (m, _) = Make(Game());
-        Assert.Equal(new[] { "START GAME", "OPTIONS", "QUIT" }, m.Current.Items.Select(i => i.Label()));
+        Assert.Equal(new[] { "START GAME", "RANDOM MAP", "CLASSIC ARENA", "OPTIONS", "QUIT" }, m.Current.Items.Select(i => i.Label()));
         Assert.Equal(0, m.Selected);
         m.Move(-1);
-        Assert.Equal(2, m.Selected);       // wrapped up to QUIT
+        Assert.Equal(4, m.Selected);       // wrapped up to QUIT
         m.Move(1);
         Assert.Equal(0, m.Selected);       // wrapped down
         Assert.False(m.SetSelected(0));    // no change
@@ -48,7 +48,7 @@ public class MenuTests
         m.Select();
         Assert.True(state().Started);
         Assert.Equal("RESUME GAME", m.Current.Items[0].Label());
-        m.SetSelected(2);
+        m.SetSelected(4);
         Assert.False(state().Quit);
         m.Select();
         Assert.True(state().Quit);
@@ -58,13 +58,13 @@ public class MenuTests
     public void Options_opens_and_back_returns_to_the_same_selection()
     {
         var (m, _) = Make(Game());
-        m.SetSelected(1); m.Select();
+        m.SetSelected(3); m.Select();
         Assert.Equal("OPTIONS", m.Current.Title);
         Assert.False(m.AtRoot);
         Assert.Equal(0, m.Selected);
         Assert.True(m.Back());
         Assert.True(m.AtRoot);
-        Assert.Equal(1, m.Selected);
+        Assert.Equal(3, m.Selected);
         Assert.False(m.Back());            // nothing above the root
     }
 
@@ -72,7 +72,7 @@ public class MenuTests
     public void Back_item_at_bottom_of_options_leaves_options()
     {
         var (m, _) = Make(Game());
-        m.SetSelected(1); m.Select();
+        m.SetSelected(3); m.Select();
         m.Move(-1);                        // wraps to BACK
         Assert.Equal("BACK", m.SelectedItem.Label());
         m.Select();
@@ -84,7 +84,7 @@ public class MenuTests
     {
         var g = Game();
         var (m, _) = Make(g);
-        m.SetSelected(1); m.Select();                   // options; item 0 = sensitivity
+        m.SetSelected(3); m.Select();                   // options; item 0 = sensitivity
         Assert.Equal("0.10", m.SelectedItem.Value!());
         m.Adjust(1); m.Adjust(1);
         Assert.Equal(0.12f, g.Console.Get("sensitivity"), 0.001f);
@@ -119,7 +119,7 @@ public class MenuTests
     {
         var g = Game();
         var (m, _) = Make(g);
-        m.SetSelected(1); m.Select();
+        m.SetSelected(3); m.Select();
         m.SetSelected(4);                               // BOT SKILL
         Assert.Equal("BOT SKILL", m.SelectedItem.Label());
         m.Adjust(1); m.Adjust(1); m.Adjust(1); m.Adjust(1); m.Adjust(1);
@@ -147,7 +147,7 @@ public class MenuTests
     {
         var g = Game();
         var (m, _) = Make(g);
-        m.SetSelected(1); m.Select();
+        m.SetSelected(3); m.Select();
         m.SetSelected(7);
         Assert.Equal("PLAIN BLOCKS", m.SelectedItem.Label());
         Assert.Equal("OFF", m.SelectedItem.Value!());
@@ -176,7 +176,7 @@ public class MenuTests
         var w = new World(); w.Add(new(-100, -64, -100), new(100, 0, 100));
         var g = new GameWorld(w, new Vector3(0, 28, 0));   // frontend cvars not registered
         var (m, _) = Make(g);
-        m.SetSelected(1); m.Select();
+        m.SetSelected(3); m.Select();
         Assert.Equal("n/a", m.SelectedItem.Value!());
         m.Adjust(1);                                       // must not throw
     }

@@ -16,8 +16,16 @@ public sealed class GameWorld
     public readonly Player Player;
     public readonly GameConsole Console = new();
     public readonly KeyBindings Bindings = new();
-    public readonly Vector3 SpawnPoint;
+    public Vector3 SpawnPoint { get; private set; }
     public readonly List<Vector3> SpawnPoints = new();
+
+    // current map (see LoadMap)
+    public string MapName { get; private set; } = "Classic Arena";
+    public int MapSeed { get; private set; }
+    public float CeilingY { get; private set; } = 768f;
+    public float MapHalf { get; private set; } = 2048f;     // interior is 2*MapHalf square
+    /// <summary>Raised after <see cref="LoadMap"/> so a UI can drop anything tied to the old map.</summary>
+    public event Action? MapLoaded;
     public readonly List<Bot> Bots = new();
     public readonly List<Pickup> Pickups = new();
     public readonly List<DecorBox> Decor = new();      // visual only
@@ -44,6 +52,53 @@ public sealed class GameWorld
         Player = new Player(map, spawn, Settings) { Name = "You" };
         Rng = new Random(seed);
         GameCommands.Install(this);
+    }
+
+    internal void SetMapInfo(string name, int seed, float half, float height)
+    {
+        MapName = name; MapSeed = seed; MapHalf = half; CeilingY = height;
+    }
+
+    /// <summary>Replace the current map in place. The console, key bindings, settings and player object are kept; geometry,
+    /// pickups, pads, lights and dummies are swapped, scores reset, and everyone respawns on the new map.</summary>
+    public void LoadMap(MapData m)
+    {
+        Map.Clear();
+        foreach (var s in m.Solids) Map.Add(s);
+        Decor.Clear(); Decor.AddRange(m.Decor);
+        Lights.Clear(); Lights.AddRange(m.Lights);
+        Pickups.Clear(); Pickups.AddRange(m.Pickups);
+        JumpPads.Clear(); JumpPads.AddRange(m.JumpPads);
+        SpawnPoints.Clear(); SpawnPoints.AddRange(m.Spawns);
+        Targets.Clear();
+        foreach (var d in m.Dummies) Targets.Add(new Target { Origin = d });
+        SpawnPoint = m.PlayerSpawn;
+        SetMapInfo(m.Name, m.Seed, m.Half, m.Height);
+
+        Projectiles.Clear(); Events.Clear();
+        foreach (var c in Combatants) { c.Frags = 0; c.Deaths = 0; ReleaseHook(c); }
+        Reset(Player, SpawnPoint);
+        foreach (var b in Bots) RespawnPlayer(b.Body);
+        MapLoaded?.Invoke();
+    }
+
+    /// <summary>Where new random-map seeds come from. Overridable so tests are deterministic.</summary>
+    public Func<int> MapSeedSource = () => Random.Shared.Next(1, 1_000_000);
+
+    /// <summary>Generate and load a random map (seed 0 or less = pick a fresh one) and announce it in the console.</summary>
+    public MapData LoadRandomMap(int seed = 0)
+    {
+        if (seed <= 0) seed = MapSeedSource();
+        var m = MapGenerator.Generate(seed);
+        LoadMap(m);
+        Console.Print($"{m.Summary}  (replay with: map random {m.Seed})");
+        return m;
+    }
+
+    public void LoadClassicArena()
+    {
+        LoadMap(Arena.Data());
+        Console.Print("Classic Arena");
     }
 
     public IEnumerable<Player> Combatants

@@ -59,7 +59,7 @@ grenade launcher in the bunkers, rocket launcher on the east ledge. A collected 
 The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furnace burning in the O that detonates every
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
-- **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
+- **START GAME / RANDOM MAP / CLASSIC ARENA / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
 - **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, zoom FOV, plain blocks (flat untextured rendering; also `r_plain 1` in the console), damage numbers, key bindings. Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
@@ -128,3 +128,18 @@ Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open
 - **Damage numbers**: arcade-style numbers pop above an enemy's head when you hit it, then float up and fade. Rapid hits (the lightning gun, shotgun
   pellets) merge into one running total that re-pops as it grows. Colour goes white, yellow, orange, red with size, and killing blows are big, red and end in `!`.
   Toggle with Options > DAMAGE NUMBERS or `cl_damagenumbers 0|1` (on by default).
+
+## Random maps
+
+Pick **RANDOM MAP** on the main menu (or `map random [seed]` in the console) to play a freshly generated arena; **CLASSIC ARENA** / `map arena`
+returns to the hand-built one. Each map prints its seed (`map random 42177` replays it exactly) and shows its name in the bottom-right corner.
+Loading a map swaps the world in place: your console, key bindings, settings and bots carry over, scores reset, and everyone respawns.
+
+Each generated map is 3072-5120 units across with a 640-896 ceiling and contains: 2-3 raised platforms reached by stairs, up to 2 walled bunkers with
+doorways, pillars with torches, cover walls and jumpable crates, ceiling girders, wall and ceiling lights, 1-3 launch pads, all seven pick-up
+weapons (the best on platforms and in bunkers), health and every ammo type, 8+ spawn points and 3 target dummies.
+
+The generator never trusts its own output: a map is only used if it passes `MapGenerator.Validate` — spawns and pickups sit on solid ground, a
+flood fill proves every spawn, floor pickup, pad and stair foot is reachable on foot from the player spawn, and every launch pad's arc is simulated
+with the player hull to make sure it lands on a platform. A map that fails is discarded and another attempt is made from the same seed.
+Dev flag: `--map arena|random|random:<seed>`.

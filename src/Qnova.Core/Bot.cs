@@ -175,7 +175,8 @@ public sealed class Bot
             else
             for (int tries = 0; tries < 12; tries++)
             {
-                _goal = new Vector3(Rand(-1800f, 1800f), 28f, Rand(-1800f, 1800f));
+                float lim = MathF.Max(300f, g.MapHalf - 250f);      // wander anywhere inside the current map
+                _goal = new Vector3(Rand(-lim, lim), 28f, Rand(-lim, lim));
                 if (g.Map.IsEmpty(_goal, MoveVars.Half)) break;   // don't wander into pillars and walls
             }
             if (want == null) _goalUntil = t + 6f;
