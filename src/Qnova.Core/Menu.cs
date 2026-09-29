@@ -151,6 +151,15 @@ public sealed class MenuModel
                 if (g.Console.TryGet("r_plain", out var v)) g.Console.Execute($"r_plain {(v != 0 ? 0 : 1)}", echo: false);
             },
         });
+        options.Items.Add(new MenuItem
+        {
+            Label = () => "DAMAGE NUMBERS",
+            Value = () => g.Console.TryGet("cl_damagenumbers", out var v) ? (v != 0 ? "ON" : "OFF") : "n/a",
+            OnAdjust = _ =>
+            {
+                if (g.Console.TryGet("cl_damagenumbers", out var v)) g.Console.Execute($"cl_damagenumbers {(v != 0 ? 0 : 1)}", echo: false);
+            },
+        });
         options.Items.Add(new MenuItem { Label = () => "KEY BINDINGS", OnSelect = () => m.Push(keys) });
         options.Items.Add(new MenuItem { Label = () => "BACK", OnSelect = () => m.Back() });
 

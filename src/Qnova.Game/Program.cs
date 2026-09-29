@@ -51,13 +51,18 @@ var ui = new ConsoleUi(game.Console);
 bool quit = false;
 
 // client-side variables and commands
+var popups = new DamagePopups();
+var flashUntil = new Dictionary<int, float>();   // victim id -> hit-flash end time (bots 1.., dummies 1000+)
+const float FlashTime = 0.16f;
 float sens = 0.10f, fov = 90f, timescale = 1f;
-bool plainBlocks = false;
+bool plainBlocks = false, damageNumbers = true, hitFlashOn = true;
 float zoomFov = 30f, zoomT = 0f;   // zoomT: 0 = normal view, 1 = fully zoomed (eases in and out)
 game.Console.AddCvar("sensitivity", sens, "Mouse sensitivity (degrees per pixel)", v => sens = Math.Max(0f, v));
 game.Console.AddCvar("zoom_fov", zoomFov, "Vertical FOV while the zoom key is held (smaller = more magnification)", v => zoomFov = Math.Clamp(v, 5f, 80f));
 game.Console.AddCvar("fov", fov, "Vertical field of view in degrees", v => fov = Math.Clamp(v, 30f, 140f));
 game.Console.AddCvar("volume", 1f, "Master volume 0-1", v => { if (audioOk) Raylib.SetMasterVolume(Math.Clamp(v, 0f, 1f)); });
+game.Console.AddCvar("cl_damagenumbers", 1f, "Floating arcade damage numbers over enemies you hit (0/1)", v => { damageNumbers = v != 0; if (!damageNumbers) popups.Clear(); });
+game.Console.AddCvar("cl_hitflash", 1f, "Enemies flash white when you hit them (0/1)", v => hitFlashOn = v != 0);
 game.Console.AddCvar("r_plain", 0f, "Render the map as plain flat-shaded blocks (0/1)", v => plainBlocks = v != 0);
 game.Console.AddCvar("host_timescale", 1f, "Game speed multiplier (slow-mo / fast-forward)", v => timescale = Math.Clamp(v, 0.05f, 8f), cheat: true);
 game.Console.AddCommand("quit", "quit", "Exit the game", _ => quit = true);
@@ -89,6 +94,9 @@ long seenLines = game.Console.TotalPrinted;
 var feed = new List<(string Text, float Until)>();
 
 // ---- key bindings: codes are upper-case strings ("W", "SPACE", "MOUSE1", "MWHEELUP"); KeyboardKey names double as codes ----
+float FlashAmount(int id, float nowF) => hitFlashOn && flashUntil.TryGetValue(id, out var until) && until > nowF ? (until - nowF) / FlashTime : 0f;
+Color Mix(Color a, Color b, float t) => new Color((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t), (byte)255);
+Color Dim(Color c, float k) => new Color((byte)(c.R * k), (byte)(c.G * k), (byte)(c.B * k), (byte)255);
 var keyCache = new Dictionary<string, KeyboardKey?>();
 KeyboardKey? KeyOf(string code)
 {
@@ -146,7 +154,7 @@ if (args.Contains("--paused")) started = true;               // show the pause v
 if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
 if (args.Contains("--keybinds"))                       // open Options > Key Bindings (add --capture to wait for a key on JUMP)
 {
-    menu.SetSelected(1); menu.Select(); menu.SetSelected(8); menu.Select(); menu.SetSelected(4);
+    menu.SetSelected(1); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
     if (args.Contains("--capture")) menu.Select();
 }
 if (devPos != null)
@@ -325,7 +333,17 @@ while (!quit && !Raylib.WindowShouldClose())
                     effects.Add((e.A, (float)now + 0.12f, 5, Color.White)); break;
                 case EventKind.JumpPad: Play(SoundId.JumpPad, e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.6f); break;
                 case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
-                case EventKind.Hurt when e.Arg == 1: hurtUntil = (float)now + 0.25f; break;
+                case EventKind.Hurt:
+                {
+                    var fl = (HurtFlags)(int)e.B.Y;
+                    if ((fl & HurtFlags.VictimHuman) != 0) hurtUntil = (float)now + 0.25f;                 // red screen flash when you're hit
+                    else if ((fl & HurtFlags.ByHuman) != 0)                                                // you hit an enemy
+                    {
+                        flashUntil[e.Arg] = (float)now + FlashTime;
+                        if (damageNumbers) popups.Add(e.Arg, e.A, (int)e.B.X, (fl & HurtFlags.Killing) != 0, (float)now);
+                    }
+                    break;
+                }
                 case EventKind.Impact: effects.Add((e.A, (float)now + 0.1f, 4, Color.Yellow)); break;
                 case EventKind.Tracer:
                 {
@@ -383,8 +401,16 @@ while (!quit && !Raylib.WindowShouldClose())
         var col = dc.Surface == Surface.Emissive ? new Color((byte)dc.Color.X, (byte)dc.Color.Y, (byte)dc.Color.Z, (byte)255) : MapRenderer.Palette(dc.Surface, dc.Box);
         MapRenderer.Box(dc.Box, dc.Surface, col);
     }
-    foreach (var t in game.Targets)
-        if (t.Alive) MapRenderer.Box(Aabb.FromCenter(t.Origin, t.Half), Surface.Flat, new Color(190, 70 + t.Health, 60, 255));
+    for (int ti = 0; ti < game.Targets.Count; ti++)
+    {
+        var t = game.Targets[ti];
+        if (!t.Alive) continue;
+        var tcol = new Color(190, 70 + Math.Clamp(t.Health, 0, 185), 60, 255);
+        float tf = FlashAmount(1000 + ti, now2);
+        // a fresh hit lights the body up bright white (drawn unlit), easing back to normal
+        if (tf > 0) MapRenderer.Box(Aabb.FromCenter(t.Origin, t.Half), Surface.Emissive, Mix(Dim(tcol, 0.55f), new Color(235, 235, 235, 255), tf));
+        else MapRenderer.Box(Aabb.FromCenter(t.Origin, t.Half), Surface.Flat, tcol);
+    }
     mapRenderer.End();
     float tnow = (float)Raylib.GetTime();
     // launch pads: glowing chevrons rise off each plate
@@ -420,11 +446,13 @@ while (!quit && !Raylib.WindowShouldClose())
         var bp = b.Body;
         if (!bp.Alive) continue;
         var body = new Color(70, 120, 210, 255);
+        float bf = FlashAmount(bp.Id, now2);
         mapRenderer.Begin();
-        MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Flat, body);
+        if (bf > 0) MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Emissive, Mix(Dim(body, 0.55f), new Color(235, 235, 235, 255), bf));
+        else MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Flat, body);
         MapRenderer.Box(Aabb.FromCenter(bp.Move.Position + new Vector3(0, 40, 0), new Vector3(8, 8, 8)), Surface.Flat, new Color(225, 195, 165, 255));
         mapRenderer.End();
-        Raylib.DrawSphere(R(bp.Move.Position + new Vector3(0, 34, 0)), 0.32f, new Color(230, 200, 170, 255));
+        Raylib.DrawSphere(R(bp.Move.Position + new Vector3(0, 34, 0)), 0.32f, Mix(new Color(230, 200, 170, 255), new Color(255, 255, 255, 255), bf));
         var look = bp.Look;
         Raylib.DrawLine3D(R(bp.Eye), R(bp.Eye + look * 40f), Color.Red);   // gun barrel: shows where it is aiming
         Raylib.DrawCubeV(R(bp.Eye + look * 22f), new Vector3(0.12f, 0.12f, 0.12f) + Vector3.Abs(look) * 0.5f, new Color(40, 40, 40, 255));
@@ -491,6 +519,7 @@ while (!quit && !Raylib.WindowShouldClose())
         else Raylib.DrawLine3D(R(from), R(b), Color.Yellow);
     }
     Raylib.EndMode3D();
+    if (damageNumbers) popups.Draw(cam, R, now2);
 
     foreach (var b in game.Bots)
     {
@@ -508,7 +537,15 @@ while (!quit && !Raylib.WindowShouldClose())
 
     var w = WeaponDef.Get(p.Current);
     float speed = MathF.Sqrt(p.Move.Velocity.X * p.Move.Velocity.X + p.Move.Velocity.Z * p.Move.Velocity.Z);
-    Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
+    // crosshair: turns red and thickens when the current weapon would hit an enemy right now
+    {
+        int ccx = Raylib.GetScreenWidth() / 2, ccy = Raylib.GetScreenHeight() / 2;
+        bool onEnemy = !paused && game.AimingAtEnemy(p);
+        var cc = onEnemy ? new Color(255, 50, 40, 255) : Color.White;
+        float th = onEnemy ? 3f : 1f, arm = onEnemy ? 11f : 8f;
+        Raylib.DrawLineEx(new Vector2(ccx - arm, ccy), new Vector2(ccx + arm, ccy), th, cc);
+        Raylib.DrawLineEx(new Vector2(ccx, ccy - arm), new Vector2(ccx, ccy + arm), th, cc);
+    }
     Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  cells {p.Cells}  slugs {p.Slugs}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
     Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.Grapple)} hook  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
@@ -554,6 +591,7 @@ while (!quit && !Raylib.WindowShouldClose())
 }
 foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
 if (audioOk) Raylib.CloseAudioDevice();
+popups.Unload();
 mapRenderer.Unload();
 splash.Unload();
 ui.Unload();

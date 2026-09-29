@@ -16,6 +16,7 @@ public class MenuTests
         g.Console.AddCvar("zoom_fov", 30f);
         g.Console.AddCvar("volume", 1f);
         g.Console.AddCvar("r_plain", 0f);
+        g.Console.AddCvar("cl_damagenumbers", 1f);
         return g;
     }
 
@@ -155,6 +156,14 @@ public class MenuTests
         Assert.Equal("ON", m.SelectedItem.Value!());
         m.Adjust(-1);                                   // Left/Right toggle too
         Assert.Equal(0f, g.Console.Get("r_plain"));
+        m.Move(1);
+        Assert.Equal("DAMAGE NUMBERS", m.SelectedItem.Label());
+        Assert.Equal("ON", m.SelectedItem.Value!());
+        m.Select();                                     // toggles the floating damage numbers off
+        Assert.Equal(0f, g.Console.Get("cl_damagenumbers"));
+        Assert.Equal("OFF", m.SelectedItem.Value!());
+        m.Adjust(1);
+        Assert.Equal("ON", m.SelectedItem.Value!());
         m.Move(1);
         Assert.Equal("KEY BINDINGS", m.SelectedItem.Label());
         m.Move(1);
