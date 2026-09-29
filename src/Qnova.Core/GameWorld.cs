@@ -179,7 +179,7 @@ public sealed class GameWorld
         switch (def.Mode)
         {
             case FireMode.Melee:
-                Hitscan(p, p.Eye, dir, def.Range, def.Damage, false);
+                Hitscan(p, def.Id, p.Eye, dir, def.Range, def.Damage, false);
                 break;
             case FireMode.Hitscan:
                 var right = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
@@ -187,19 +187,19 @@ public sealed class GameWorld
                 for (int i = 0; i < def.Pellets; i++)
                 {
                     var d = Vector3.Normalize(dir + right * (Crandom() * def.SpreadX) + up * (Crandom() * def.SpreadY));
-                    Hitscan(p, p.Eye, d, def.Range, def.Damage, true);
+                    Hitscan(p, def.Id, p.Eye, d, def.Range, def.Damage, true);
                 }
                 break;
             case FireMode.Nail:
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Nail, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Expires = Time + 6 });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Nail, Weapon = def.Id, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Expires = Time + 6 });
                 break;
             case FireMode.Rocket:
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Rocket, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 5 });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Rocket, Weapon = def.Id, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 5 });
                 break;
             case FireMode.Grenade:
                 // Q1: forward*600 + up*200, bounces, 2.5s fuse.
                 var up2 = Vector3.Normalize(Vector3.Cross(Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY)), dir));
-                Projectiles.Add(new Projectile { Kind = ProjectileKind.Grenade, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed + up2 * 200f, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 2.5f });
+                Projectiles.Add(new Projectile { Kind = ProjectileKind.Grenade, Weapon = def.Id, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed + up2 * 200f, Damage = def.Damage, Splash = def.SplashRadius, Expires = Time + 2.5f });
                 break;
         }
     }
@@ -208,7 +208,7 @@ public sealed class GameWorld
 
     static Aabb Box(Player p) => Aabb.FromCenter(p.Move.Position, MoveVars.Half);
 
-    void Hitscan(Player shooter, Vector3 origin, Vector3 dir, float range, int damage, bool tracer)
+    void Hitscan(Player shooter, WeaponId weapon, Vector3 origin, Vector3 dir, float range, int damage, bool tracer)
     {
         var wall = Map.TraceRay(origin, origin + dir * range);
         float best = wall.Fraction * range;
@@ -229,7 +229,7 @@ public sealed class GameWorld
         var hit = origin + dir * best;
         if (tracer) Events.Add(new GameEvent(EventKind.Tracer, origin, hit));
         if (victim is Target t2) Damage(t2, damage, dir, shooter);
-        else if (victim is Player p2) DamagePlayer(p2, damage, dir, shooter, knock: false);
+        else if (victim is Player p2) DamagePlayer(p2, damage, dir, shooter, knock: false, weapon);
         else if (wall.Hit) Events.Add(new GameEvent(EventKind.Impact, hit, wall.Normal));
     }
 
@@ -305,7 +305,7 @@ public sealed class GameWorld
         if (pr.Kind == ProjectileKind.Nail)
         {
             if (direct is Target t) Damage(t, pr.Damage, dir, owner);
-            else if (direct is Player pl) DamagePlayer(pl, pr.Damage, dir, owner, knock: false);
+            else if (direct is Player pl) DamagePlayer(pl, pr.Damage, dir, owner, knock: false, pr.Weapon);
             Events.Add(new GameEvent(EventKind.Impact, at, -dir));
             return;
         }
@@ -314,14 +314,14 @@ public sealed class GameWorld
         {
             int dmg = 100 + (int)(Rng.NextDouble() * 20);
             if (direct is Target t) Damage(t, dmg, dir, owner, knock: false);
-            else if (direct is Player pl) DamagePlayer(pl, dmg, dir, owner, knock: false);
+            else if (direct is Player pl) DamagePlayer(pl, dmg, dir, owner, knock: false, pr.Weapon);
         }
-        RadiusDamage(at, pr.Splash, pr.Damage, direct, owner);
+        RadiusDamage(at, pr.Splash, pr.Damage, direct, owner, pr.Weapon);
         Events.Add(new GameEvent(EventKind.Explosion, at));
     }
 
     /// <summary>Q1 T_RadiusDamage: points = dmg - 0.5 * distance(origin, target center); self damage halved.</summary>
-    public void RadiusDamage(Vector3 at, float radius, int damage, object? ignore, Player? attacker = null)
+    public void RadiusDamage(Vector3 at, float radius, int damage, object? ignore, Player? attacker = null, WeaponId? weapon = null)
     {
         attacker ??= Player;
         foreach (var v in Combatants.ToList())
@@ -333,7 +333,7 @@ public sealed class GameWorld
             if (v == attacker) pts *= 0.5f;
             Knock(ref v.Move.Velocity, center - at, pts);
             if (v.Move.Velocity.Y > 0) v.Move.OnGround = false;
-            DamagePlayer(v, (int)pts, default, attacker, knock: false);
+            DamagePlayer(v, (int)pts, default, attacker, knock: false, weapon);
         }
         foreach (var t in Targets)
         {
@@ -366,22 +366,25 @@ public sealed class GameWorld
         }
     }
 
-    public void DamagePlayer(Player v, int dmg, Vector3 dir, Player? by, bool knock = true)
+    public void DamagePlayer(Player v, int dmg, Vector3 dir, Player? by, bool knock = true, WeaponId? weapon = null)
     {
         if (!v.Alive || dmg <= 0) return;
         if (knock) v.Move.Velocity += dir * dmg * 8f;
         if (!v.God) v.Health -= dmg;
         Events.Add(new GameEvent(EventKind.Hurt, v.Move.Position, Arg: v == Player ? 1 : 0));
-        if (v.Health <= 0) Die(v, by);
+        if (v.Health <= 0) Die(v, by, weapon);
     }
 
-    public void Die(Player v, Player? by)
+    /// <summary>Kill a combatant and announce it in the console, naming the weapon when known
+    /// ("Bot1 killed You with the Rocket Launcher"; a self-kill reads "You suicided (Rocket Launcher)").</summary>
+    public void Die(Player v, Player? by, WeaponId? weapon = null)
     {
         v.Health = Math.Min(v.Health, 0);
         v.Deaths++;
         v.RespawnAt = Time + RespawnDelay;
-        if (by != null && by != v) { by.Frags++; Console.Print($"{by.Name} killed {v.Name}"); }
-        else { v.Frags--; Console.Print($"{v.Name} suicided"); }
+        string gun = weapon is { } w ? WeaponDef.Get(w).Name : "";
+        if (by != null && by != v) { by.Frags++; Console.Print($"{by.Name} killed {v.Name}" + (gun.Length > 0 ? $" with the {gun}" : "")); }
+        else { v.Frags--; Console.Print($"{v.Name} suicided" + (gun.Length > 0 ? $" ({gun})" : "")); }
         Events.Add(new GameEvent(EventKind.Kill, v.Move.Position, Arg: v == Player ? 1 : 0));
     }
 }

@@ -13,6 +13,7 @@ public class MenuTests
         // client cvars are normally registered by the frontend
         g.Console.AddCvar("sensitivity", 0.10f);
         g.Console.AddCvar("fov", 90f);
+        g.Console.AddCvar("zoom_fov", 30f);
         g.Console.AddCvar("volume", 1f);
         g.Console.AddCvar("r_plain", 0f);
         return g;
@@ -98,6 +99,14 @@ public class MenuTests
         for (int i = 0; i < 50; i++) m.Adjust(1);
         Assert.Equal(120f, g.Console.Get("fov"));
 
+        m.Move(1);                                      // zoom fov
+        Assert.Equal("ZOOM FOV", m.SelectedItem.Label());
+        Assert.Equal("30", m.SelectedItem.Value!());
+        m.Adjust(1); m.Adjust(1);
+        Assert.Equal(40f, g.Console.Get("zoom_fov"));
+        for (int i = 0; i < 50; i++) m.Adjust(-1);
+        Assert.Equal(10f, g.Console.Get("zoom_fov"));   // clamped at min
+
         m.Move(1);                                      // volume
         Assert.Equal("100%", m.SelectedItem.Value!());
         m.Adjust(-1);
@@ -110,12 +119,12 @@ public class MenuTests
         var g = Game();
         var (m, _) = Make(g);
         m.SetSelected(1); m.Select();
-        m.SetSelected(3);                               // BOT SKILL
+        m.SetSelected(4);                               // BOT SKILL
         Assert.Equal("BOT SKILL", m.SelectedItem.Label());
         m.Adjust(1); m.Adjust(1); m.Adjust(1); m.Adjust(1); m.Adjust(1);
         Assert.Equal(5, g.BotSkill);
 
-        m.SetSelected(4);                               // BOTS
+        m.SetSelected(5);                               // BOTS
         Assert.Equal("0", m.SelectedItem.Value!());
         for (int i = 0; i < 10; i++) m.Adjust(1);
         Assert.Equal(MenuModel.MaxBots, g.Bots.Count);
@@ -123,7 +132,7 @@ public class MenuTests
         Assert.Equal(MenuModel.MaxBots - 1, g.Bots.Count);
         Assert.Equal((MenuModel.MaxBots - 1).ToString(), m.SelectedItem.Value!());
 
-        m.SetSelected(5);                               // AUTO BUNNY-HOP
+        m.SetSelected(6);                               // AUTO BUNNY-HOP
         Assert.Equal("OFF", m.SelectedItem.Value!());
         m.Select();                                     // Enter toggles
         Assert.Equal("ON", m.SelectedItem.Value!());
@@ -138,7 +147,7 @@ public class MenuTests
         var g = Game();
         var (m, _) = Make(g);
         m.SetSelected(1); m.Select();
-        m.SetSelected(6);
+        m.SetSelected(7);
         Assert.Equal("PLAIN BLOCKS", m.SelectedItem.Label());
         Assert.Equal("OFF", m.SelectedItem.Value!());
         m.Select();

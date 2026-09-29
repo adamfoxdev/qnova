@@ -3,7 +3,7 @@ namespace Qnova.Core;
 /// <summary>Things a key or mouse button can do in the game. Menu navigation, Esc and the console key are fixed.</summary>
 public enum InputAction
 {
-    Forward, Back, MoveLeft, MoveRight, Jump, Fire,
+    Forward, Back, MoveLeft, MoveRight, Jump, Fire, Zoom,
     Weapon1, Weapon2, Weapon3, Weapon4, Weapon5, Weapon6, Weapon7,
     NextWeapon, PrevWeapon, Mute, Respawn,
 }
@@ -21,6 +21,7 @@ public sealed class KeyBindings
         (InputAction.MoveRight,   "moveright",  "MOVE RIGHT",     "D"),
         (InputAction.Jump,        "jump",       "JUMP",           "SPACE"),
         (InputAction.Fire,        "attack",     "FIRE",           "MOUSE1"),
+        (InputAction.Zoom,        "zoom",       "ZOOM (HOLD)",    "MOUSE3"),
         (InputAction.Weapon1,     "weapon1",    "AXE",            "ONE"),
         (InputAction.Weapon2,     "weapon2",    "SHOTGUN",        "TWO"),
         (InputAction.Weapon3,     "weapon3",    "DOUBLE SHOTGUN", "THREE"),

@@ -60,7 +60,7 @@ The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furna
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
 - **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
-- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, plain blocks (flat untextured rendering; also `r_plain 1` in the console), key bindings. Left/Right adjust; Esc goes back.
+- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, zoom FOV, plain blocks (flat untextured rendering; also `r_plain 1` in the console), key bindings. Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
 Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Game/Splash.cs`.
@@ -88,3 +88,12 @@ Bindings are saved to `bindings.cfg` in your config folder (`~/.config/qnova` on
 Key names are the upper-case Raylib names (`W`, `SPACE`, `LEFTSHIFT`, `UP`, `ONE`...) plus `MOUSE1`-`MOUSE5`, `MWHEELUP`, `MWHEELDOWN`.
 Actions: forward back moveleft moveright jump attack weapon1-weapon7 nextweapon prevweapon mute respawn.
 Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open the bindings screen).
+
+## Zoom, kill messages and cheats
+
+- **Zoom**: hold **MOUSE3** (middle button; rebindable, action `zoom`) to ease into a narrower view; look speed scales with the view so aiming stays precise.
+  Set the magnification with Options > ZOOM FOV or `zoom_fov` (default 30; smaller = more zoom).
+- **Kill messages** name the weapon: `Bot1 killed You with the Rocket Launcher`, `You killed Bot1 with the Double Shotgun`,
+  and a self-kill reads `You suicided (Rocket Launcher)`.
+- **Cheats** (need `sv_cheats 1`): `giveall` (every weapon + full ammo, health untouched), `impulse 9` (same, Quake-style),
+  and the existing `give all` (everything *and* full health).

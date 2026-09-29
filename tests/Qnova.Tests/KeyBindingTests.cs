@@ -26,6 +26,7 @@ public class KeyBindingTests
         Assert.Equal("W", kb.Get(InputAction.Forward));
         Assert.Equal("SPACE", kb.Get(InputAction.Jump));
         Assert.Equal("MOUSE1", kb.Get(InputAction.Fire));
+        Assert.Equal("MOUSE3", kb.Get(InputAction.Zoom));
         Assert.Equal(InputAction.Jump, kb.ActionFor("space"));   // case-insensitive
         Assert.Null(kb.ActionFor("Q"));
     }
@@ -215,7 +216,7 @@ public class KeyBindingTests
         var g = Game();
         var m = MenuModel.Create(g, () => false, () => { }, () => { });
         m.SetSelected(1); m.Select();                        // OPTIONS
-        m.SetSelected(7);                                    // KEY BINDINGS
+        m.SetSelected(8);                                    // KEY BINDINGS
         Assert.Equal("KEY BINDINGS", m.SelectedItem.Label());
         m.Select();
         Assert.Equal("KEY BINDINGS", m.Current.Title);
@@ -230,6 +231,8 @@ public class KeyBindingTests
         Assert.Equal("MOVE FORWARD", m.Current.Items[0].Label());
         Assert.Equal("W", m.Current.Items[0].Value!());
         Assert.Equal("MOUSE LEFT", m.Current.Items[5].Value!());
+        Assert.Equal("ZOOM (HOLD)", m.Current.Items[6].Label());
+        Assert.Equal("MOUSE MIDDLE", m.Current.Items[6].Value!());
         Assert.Equal("RESET TO DEFAULTS", m.Current.Items[^2].Label());
         Assert.Equal("BACK", m.Current.Items[^1].Label());
     }

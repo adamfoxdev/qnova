@@ -53,7 +53,9 @@ bool quit = false;
 // client-side variables and commands
 float sens = 0.10f, fov = 90f, timescale = 1f;
 bool plainBlocks = false;
+float zoomFov = 30f, zoomT = 0f;   // zoomT: 0 = normal view, 1 = fully zoomed (eases in and out)
 game.Console.AddCvar("sensitivity", sens, "Mouse sensitivity (degrees per pixel)", v => sens = Math.Max(0f, v));
+game.Console.AddCvar("zoom_fov", zoomFov, "Vertical FOV while the zoom key is held (smaller = more magnification)", v => zoomFov = Math.Clamp(v, 5f, 80f));
 game.Console.AddCvar("fov", fov, "Vertical field of view in degrees", v => fov = Math.Clamp(v, 30f, 140f));
 game.Console.AddCvar("volume", 1f, "Master volume 0-1", v => { if (audioOk) Raylib.SetMasterVolume(Math.Clamp(v, 0f, 1f)); });
 game.Console.AddCvar("r_plain", 0f, "Render the map as plain flat-shaded blocks (0/1)", v => plainBlocks = v != 0);
@@ -143,7 +145,7 @@ if (args.Contains("--paused")) started = true;               // show the pause v
 if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
 if (args.Contains("--keybinds"))                       // open Options > Key Bindings (add --capture to wait for a key on JUMP)
 {
-    menu.SetSelected(1); menu.Select(); menu.SetSelected(7); menu.Select(); menu.SetSelected(4);
+    menu.SetSelected(1); menu.Select(); menu.SetSelected(8); menu.Select(); menu.SetSelected(4);
     if (args.Contains("--capture")) menu.Select();
 }
 if (devPos != null)
@@ -241,8 +243,14 @@ while (!quit && !Raylib.WindowShouldClose())
 
     var md = paused || skipMouse || devLock ? default : Raylib.GetMouseDelta();
     skipMouse = false;
-    yaw -= md.X * sens;
-    pitch = Math.Clamp(pitch - md.Y * sens, -89f, 89f);
+    // Zoom: hold the zoom key to ease toward zoom_fov; look speed shrinks with the view so aiming stays precise.
+    bool zoomHeld = !paused && ActionDown(InputAction.Zoom);
+    zoomT = Math.Clamp(zoomT + (zoomHeld ? 1f : -1f) * Raylib.GetFrameTime() / 0.12f, 0f, 1f);
+    float smooth = zoomT * zoomT * (3f - 2f * zoomT);
+    float viewFov = fov + (Math.Min(zoomFov, fov) - fov) * smooth;
+    float lookScale = MathF.Tan(viewFov * MathF.PI / 360f) / MathF.Tan(fov * MathF.PI / 360f);
+    yaw -= md.X * sens * lookScale;
+    pitch = Math.Clamp(pitch - md.Y * sens * lookScale, -89f, 89f);
     fireHeld = !paused && ActionDown(InputAction.Fire);
     WeaponId? sel = null;
     float wheel = paused ? 0 : Raylib.GetMouseWheelMove();
@@ -311,7 +319,7 @@ while (!quit && !Raylib.WindowShouldClose())
     var p = game.Player;
     var cam = new Camera3D
     {
-        Position = R(p.Eye), Target = R(p.Eye + p.Look), Up = Vector3.UnitY, FovY = fov, Projection = CameraProjection.Perspective,
+        Position = R(p.Eye), Target = R(p.Eye + p.Look), Up = Vector3.UnitY, FovY = viewFov, Projection = CameraProjection.Perspective,
     };
     float now2 = (float)Raylib.GetTime();
     effects.RemoveAll(e => e.Until < now2); tracers.RemoveAll(t => t.Until < now2);
@@ -413,9 +421,9 @@ while (!quit && !Raylib.WindowShouldClose())
     var w = WeaponDef.Get(p.Current);
     float speed = MathF.Sqrt(p.Move.Velocity.X * p.Move.Velocity.X + p.Move.Velocity.Z * p.Move.Velocity.Z);
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
-    Raylib.DrawText($"HP {p.Health}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
+    Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
-    Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
+    Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
     if (!p.Alive)
     {
         float left = Math.Max(0f, p.RespawnAt - game.Time);
