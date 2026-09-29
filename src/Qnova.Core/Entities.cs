@@ -16,6 +16,9 @@ public sealed class Player
     public bool God;
     public string Name = "Player";
     public bool IsBot;
+    public readonly Hook Hook = new();
+    public bool GrappleHeld;      // previous-tick state of the grapple key (for press detection)
+    public float PadCooldownUntil;
     public float RespawnAt;   // when dead: time at which to respawn
 
     public Player(World w, Vector3 spawn, MoveSettings? settings = null) { Move = new PlayerMove(w, settings) { Position = spawn }; }
@@ -78,7 +81,7 @@ public sealed class Projectile
     public float Splash;
 }
 
-public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, DryFire, Pickup, ItemRespawn }
+public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, DryFire, Pickup, ItemRespawn, HookFire, HookAttach, JumpPad }
 
 /// <summary>Arg carries the (int)WeaponId for Shot/DryFire and the (int)PickupKind for Pickup/ItemRespawn (B.X = 1 when the human collected it).</summary>
 public readonly record struct GameEvent(EventKind Kind, Vector3 A, Vector3 B = default, int Arg = 0);
@@ -114,4 +117,36 @@ public sealed class Pickup
         WeaponId.GrenadeLauncher or WeaponId.RocketLauncher => (AmmoType.Rockets, 5),
         _ => (AmmoType.None, 0),
     };
+}
+
+public enum HookState { None, Flying, Attached }
+
+/// <summary>A grappling hook: flies straight until it strikes a surface, then reels its owner in while the key is held.</summary>
+public sealed class Hook
+{
+    public HookState State;
+    public Vector3 Pos;          // tip (flying) or anchor (attached)
+    public Vector3 Dir;
+    public float Traveled;
+    public float NextAt;         // earliest time it can be fired again
+    public float CheckAt;        // next progress check while attached
+    public float LastDist;
+    public Vector3 Anchor => Pos;
+}
+
+/// <summary>Quake 3 style launch pad: touching the trigger flings you along a ballistic arc whose apex is <see cref="Target"/>.</summary>
+public sealed class JumpPad
+{
+    public Aabb Trigger;
+    public Vector3 Target;       // the apex of the flight
+    public Vector3 Center => Trigger.Center;
+
+    /// <summary>Q3's AimAtTarget: rise to the target height in time t = sqrt(2h/g), covering the horizontal distance in that time.</summary>
+    public Vector3 LaunchVelocity(Vector3 from, float gravity)
+    {
+        var d = Target - from;
+        float h = MathF.Max(32f, d.Y);
+        float t = MathF.Sqrt(2f * h / MathF.Max(1f, gravity));
+        return new Vector3(d.X / t, gravity * t, d.Z / t);
+    }
 }

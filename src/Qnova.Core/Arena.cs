@@ -65,6 +65,7 @@ public static class Arena
             g.Targets.Add(new Target { Origin = pos });
         AddPickups(g);
         AddVisuals(g);
+        AddJumpPads(g);
         for (int i = 0; i < bots; i++) g.AddBot();
         return g;
     }
@@ -150,6 +151,29 @@ public static class Arena
                 Fixture(new(lx, Height - 100, lz), new(56, 4, 56), lampCol);
                 Light(new(lx, Height - 130, lz), new Vector3(1.0f, 0.82f, 0.6f), 1500f);
             }
+    }
+
+    /// <summary>Quake 3 style launch pads. Each flings you along an arc whose apex is the target point.</summary>
+    static void AddJumpPads(GameWorld g)
+    {
+        var cyan = new Vector3(40, 190, 255);
+        void Pad(float x, float baseY, float z, Vector3 apex)
+        {
+            g.JumpPads.Add(new JumpPad { Trigger = new Aabb(new(x - 48, baseY, z - 48), new(x + 48, baseY + 40, z + 48)), Target = apex });
+            // glowing plate with a bright rim, flush with the floor
+            g.Decor.Add(new DecorBox(new Aabb(new(x - 44, baseY + 0.5f, z - 44), new(x + 44, baseY + 3f, z + 44)), Surface.Emissive, cyan));
+            var rim = new Vector3(190, 235, 255);
+            g.Decor.Add(new DecorBox(new Aabb(new(x - 48, baseY + 0.5f, z - 48), new(x + 48, baseY + 4f, z - 42)), Surface.Emissive, rim));
+            g.Decor.Add(new DecorBox(new Aabb(new(x - 48, baseY + 0.5f, z + 42), new(x + 48, baseY + 4f, z + 48)), Surface.Emissive, rim));
+            g.Decor.Add(new DecorBox(new Aabb(new(x - 48, baseY + 0.5f, z - 42), new(x - 42, baseY + 4f, z + 42)), Surface.Emissive, rim));
+            g.Decor.Add(new DecorBox(new Aabb(new(x + 42, baseY + 0.5f, z - 42), new(x + 48, baseY + 4f, z + 42)), Surface.Emissive, rim));
+            g.Lights.Add(new MapLight { Position = new(x, baseY + 70, z), Color = new Vector3(0.25f, 0.85f, 1.5f), Radius = 480f });
+        }
+
+        Pad(1500, 0, 700, new(1850, 260, 700));          // up onto the east ledge
+        Pad(-800, 0, 0, new(-250, 330, 0));              // over the -X stairs onto the mesa
+        Pad(200, 0, -1700, new(200, 420, -700));         // long hop from the north wall, landing on the mesa
+        Pad(1950, 128, -600, new(1500, 300, -600));      // back off the ledge into the arena
     }
 
     static void AddPickups(GameWorld g)
