@@ -15,36 +15,13 @@ sealed class ConsoleUi
     // Prefer a real monospace TTF from the system, rasterised at the display size.
     const int FontSize = 20;
     const int LineHeight = 24;
-    static readonly string[] FontCandidates =
-    {
-        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
-        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
-        "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf",
-        "/System/Library/Fonts/Menlo.ttc",
-        "/System/Library/Fonts/Monaco.ttf",
-        "/Library/Fonts/Courier New.ttf",
-        @"C:\Windows\Fonts\consola.ttf",
-        @"C:\Windows\Fonts\cour.ttf",
-    };
     readonly Font _font;
     readonly bool _customFont;
 
     public ConsoleUi(GameConsole c)
     {
         _c = c;
-        _font = Raylib.GetFontDefault();
-        foreach (var path in FontCandidates)
-        {
-            if (!File.Exists(path)) continue;
-            var f = Raylib.LoadFontEx(path, FontSize, null, 0);   // null codepoints = basic ASCII
-            if (f.Texture.Id == 0) continue;
-            Raylib.SetTextureFilter(f.Texture, TextureFilter.Bilinear);
-            _font = f; _customFont = true;
-            break;
-        }
+        _font = Fonts.Load(FontSize, bold: false, out _customFont);
     }
 
     public void Unload() { if (_customFont) Raylib.UnloadFont(_font); }

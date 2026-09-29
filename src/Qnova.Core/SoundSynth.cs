@@ -1,6 +1,6 @@
 namespace Qnova.Core;
 
-public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn }
+public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn, MenuMove, MenuSelect }
 
 /// <summary>Procedurally synthesized 16-bit mono sound effects, so the game ships no audio assets.</summary>
 public static class SoundSynth
@@ -54,6 +54,8 @@ public static class SoundSynth
                 Delay(Tone(0.5f, 880, 880, decay: 0.15f, gain: 0.5f), 0.14f)),
             SoundId.PickupHealth => Mix(Tone(0.35f, 660, 660, decay: 0.1f, gain: 0.5f), Delay(Tone(0.35f, 880, 880, decay: 0.1f, gain: 0.5f), 0.09f)),
             SoundId.ItemRespawn => Mix(Tone(0.3f, 300, 600, decay: 0.09f, gain: 0.45f)),
+            SoundId.MenuMove => Mix(Tone(0.06f, 520, 380, decay: 0.02f, gain: 0.45f, square: true)),
+            SoundId.MenuSelect => Mix(Tone(0.25f, 160, 60, decay: 0.08f, gain: 0.9f), Noise(rng, 0.12f, 0.03f, lowpass: 0.5f, gain: 0.5f)),
             _ => Mix(Tone(0.05f, 900, 600, decay: 0.012f, gain: 0.5f, square: true)),
         };
     }

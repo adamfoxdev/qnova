@@ -80,6 +80,12 @@ public sealed class GameConsole
 
     public IEnumerable<Cvar> Cvars => _cvars.Values;
     public float Get(string name) => _cvars[name].Value;
+    public bool TryGet(string name, out float value)
+    {
+        bool ok = _cvars.TryGetValue(name, out var v);
+        value = ok ? v!.Value : 0f;
+        return ok;
+    }
     public bool CheatsOn => _cvars["sv_cheats"].Value != 0;
 
     public Cvar AddCvar(string name, float def, string desc = "", Action<float>? onChange = null, bool cheat = false)
