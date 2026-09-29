@@ -68,7 +68,10 @@ as an example, or an empty room from the template menu, and saves your work in t
   and `map save <path>` writes the current map, so any map (including a random one) can be opened in the editor via **Import**. Capture the flag works on
   custom maps that have both flag bases; otherwise the two farthest spawns are used.
 
-The file format is versioned JSON, described by `MapJson` in `src/Qnova.Core/MapJson.cs`; `maps/` has the Classic Arena and a random map as samples.
+The file format is versioned JSON, described by `MapJson` in `src/Qnova.Core/MapJson.cs`; `maps/` has samples you can load with `map file maps/<name>.json` (or `--map file:<path>` on the command line):
+`classic_arena.json`, `random_42.json`, **`skyspire.json`** (a 2560-square map with a 3072-unit ceiling: five slabs spiral up to 1920 units, each reached
+from the last by a launch pad, with the Railgun on top) and **`big_yard.json`** (12000 × 12000 units: a central mound, six walled compounds, ~90 pillars,
+spread-out spawns and both flag bases at the far ends).
 
 ## Capture the flag
 

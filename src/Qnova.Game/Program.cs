@@ -159,6 +159,14 @@ if (args.Contains("--keybinds"))                       // open Options > Key Bin
     menu.SetSelected(4); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
     if (args.Contains("--capture")) menu.Select();
 }
+// --map arena | random | random:<seed> | file:<path>   (load a specific map at startup)
+if (Arg("--map") is { } mapArg)
+{
+    if (mapArg.StartsWith("random", StringComparison.OrdinalIgnoreCase))
+        game.LoadRandomMap(mapArg.Contains(':') && int.TryParse(mapArg[(mapArg.IndexOf(':') + 1)..], out var mseed) ? mseed : 0);
+    else if (mapArg.StartsWith("file:", StringComparison.OrdinalIgnoreCase)) game.LoadMapFile(mapArg[5..]);
+    else game.LoadClassicArena();
+}
 if (args.Contains("--ctf")) game.SetMode(GameMode.Ctf);   // capture the flag on whatever map is loaded
 if (devPos != null)
 {
@@ -168,13 +176,6 @@ if (devPos != null)
 if (DevF("--yaw") is float dy) yaw = dy;
 if (DevF("--pitch") is float dp) pitch = dp;
 if (devExec != null) game.Console.Execute(devExec, echo: false);
-// --map arena | random | random:<seed>   (load a specific map at startup)
-if (Arg("--map") is { } mapArg)
-{
-    if (mapArg.StartsWith("random", StringComparison.OrdinalIgnoreCase))
-        game.LoadRandomMap(mapArg.Contains(':') && int.TryParse(mapArg[(mapArg.IndexOf(':') + 1)..], out var mseed) ? mseed : 0);
-    else game.LoadClassicArena();
-}
 if (devConsole) ui.Toggle();
 
 while (!quit && !Raylib.WindowShouldClose())
