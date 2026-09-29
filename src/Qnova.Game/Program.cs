@@ -7,7 +7,35 @@ static Vector3 R(Vector3 v) => v * S;
 
 Raylib.SetConfigFlags(ConfigFlags.VSyncHint | ConfigFlags.Msaa4xHint);
 Raylib.InitWindow(1280, 720, "qnova");
+Raylib.InitAudioDevice();
 Raylib.DisableCursor();
+
+// Sound effects are synthesized by Qnova.Core; each id gets a small pool so rapid fire can overlap.
+const int PoolSize = 4;
+var audioOk = Raylib.IsAudioDeviceReady();
+var sounds = new Dictionary<SoundId, (Sound[] Pool, int[] Next)>();
+if (audioOk)
+    foreach (var id in Enum.GetValues<SoundId>())
+    {
+        var bytes = SoundSynth.ToWav(SoundSynth.Generate(id));
+        var wave = Raylib.LoadWaveFromMemory(".wav", bytes);
+        var pool = new Sound[PoolSize];
+        for (int i = 0; i < PoolSize; i++) pool[i] = Raylib.LoadSoundFromWave(wave);
+        Raylib.UnloadWave(wave);
+        sounds[id] = (pool, new int[1]);
+    }
+bool muted = false;
+
+void Play(SoundId id, Vector3 at, Vector3 listener, float volume = 1f)
+{
+    if (!audioOk || muted || !sounds.TryGetValue(id, out var e)) return;
+    float dist = Vector3.Distance(at, listener);
+    float v = volume * Math.Clamp(1f - dist / 2500f, 0f, 1f);
+    if (v <= 0.01f) return;
+    var snd = e.Pool[e.Next[0]++ % PoolSize];
+    Raylib.SetSoundVolume(snd, v);
+    Raylib.PlaySound(snd);
+}
 
 var game = Arena.Build();
 var spawn = game.Player.Move.Position;
@@ -38,6 +66,7 @@ while (!Raylib.WindowShouldClose())
         int n = WeaponDef.All.Length, cur = (int)game.Player.Current;
         sel = (WeaponId)((cur + (wheel > 0 ? 1 : n - 1)) % n);
     }
+    if (Raylib.IsKeyPressed(KeyboardKey.M)) muted = !muted;
     if (Raylib.IsKeyPressed(KeyboardKey.R))
     {
         game.Player.Move.Position = spawn; game.Player.Move.Velocity = default;
@@ -71,7 +100,12 @@ while (!Raylib.WindowShouldClose())
             double now = Raylib.GetTime();
             switch (e.Kind)
             {
-                case EventKind.Explosion: effects.Add((e.A, (float)now + 0.35f, 120, Color.Orange)); break;
+                case EventKind.Shot: Play(SoundSynth.ForWeapon((WeaponId)e.Arg), e.A, game.Player.Eye, 0.8f); break;
+                case EventKind.DryFire: Play(SoundId.DryFire, e.A, game.Player.Eye, 0.6f); break;
+                case EventKind.Bounce: Play(SoundId.Bounce, e.A, game.Player.Eye, 0.7f); break;
+                case EventKind.Explosion:
+                    Play(SoundId.Explosion, e.A, game.Player.Eye);
+                    effects.Add((e.A, (float)now + 0.35f, 120, Color.Orange)); break;
                 case EventKind.Impact: effects.Add((e.A, (float)now + 0.1f, 4, Color.Yellow)); break;
                 case EventKind.Tracer: tracers.Add((e.A, e.B, (float)now + 0.05f)); break;
             }
@@ -110,8 +144,10 @@ while (!Raylib.WindowShouldClose())
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
     Raylib.DrawText($"HP {p.Health}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
-    Raylib.DrawText("WASD move  SPACE jump  MOUSE look  LMB fire  1-7/wheel weapon  R reset", 16, 44, 16, Color.Gray);
+    Raylib.DrawText("WASD move  SPACE jump  MOUSE look  LMB fire  1-7/wheel weapon  M mute  R reset", 16, 44, 16, Color.Gray);
     if (!p.Alive) Raylib.DrawText("YOU DIED - press R", 500, 340, 30, Color.Red);
     Raylib.EndDrawing();
 }
+foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
+if (audioOk) Raylib.CloseAudioDevice();
 Raylib.CloseWindow();

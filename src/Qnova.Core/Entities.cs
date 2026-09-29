@@ -55,5 +55,7 @@ public sealed class Projectile
     public float Splash;
 }
 
-public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill }
-public readonly record struct GameEvent(EventKind Kind, Vector3 A, Vector3 B = default);
+public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, DryFire }
+
+/// <summary>Arg carries the (int)WeaponId for Shot and DryFire events.</summary>
+public readonly record struct GameEvent(EventKind Kind, Vector3 A, Vector3 B = default, int Arg = 0);
