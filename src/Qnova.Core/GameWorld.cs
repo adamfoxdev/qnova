@@ -79,7 +79,7 @@ public sealed class GameWorld
 
     public Bot AddBot()
     {
-        var body = new Player(Map, SpawnPoint, Settings) { Name = $"Bot{++_botCounter}", IsBot = true };
+        var body = new Player(Map, SpawnPoint, Settings) { Name = $"Bot{++_botCounter}", Id = _botCounter, IsBot = true };
         body.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());   // bots spawn with the full arsenal
         var bot = new Bot(body, Rng.Next());
         Bots.Add(bot);
@@ -315,6 +315,27 @@ public sealed class GameWorld
 
     static Aabb Box(Player p) => Aabb.FromCenter(p.Move.Position, MoveVars.Half);
 
+    /// <summary>Is a living enemy (bot or dummy) the first thing along the shooter's line of sight, within the current
+    /// weapon's reach? Drives the red crosshair: "shooting now would hit".</summary>
+    public bool AimingAtEnemy(Player shooter)
+    {
+        if (!shooter.Alive) return false;
+        var def = WeaponDef.Get(shooter.Current);
+        float range = def.Range;
+        var origin = shooter.Eye; var dir = shooter.Look;
+        var wall = Map.TraceRay(origin, origin + dir * range);
+        float reach = wall.Fraction * range;
+        foreach (var t in Targets)
+            if (t.Alive && World.RayVsBox(origin, dir * range, t.Bounds.Min, t.Bounds.Max, out float f, out _) && f * range <= reach) return true;
+        foreach (var o in Combatants)
+            if (o != shooter && o.Alive)
+            {
+                var b = Box(o);
+                if (World.RayVsBox(origin, dir * range, b.Min, b.Max, out float f, out _) && f * range <= reach) return true;
+            }
+        return false;
+    }
+
     /// <summary>Q3 railgun: an instant beam that passes through every player and dummy in its path (until a wall) for full damage.</summary>
     void RailShot(Player shooter, WeaponDef def, Vector3 dir)
     {
@@ -489,7 +510,8 @@ public sealed class GameWorld
         if (!t.Alive) return;
         t.Health -= dmg;
         if (knock) t.Velocity += dir * dmg * 8f;
-        Events.Add(new GameEvent(EventKind.Hurt, t.Origin));
+        var flags = (by == Player ? HurtFlags.ByHuman : 0) | (t.Health <= 0 ? HurtFlags.Killing : 0);
+        Events.Add(new GameEvent(EventKind.Hurt, t.Origin, new Vector3(dmg, (float)flags, 0), 1000 + Targets.IndexOf(t)));
         if (t.Health <= 0)
         {
             by.Frags++;
@@ -503,7 +525,8 @@ public sealed class GameWorld
         if (!v.Alive || dmg <= 0) return;
         if (knock) v.Move.Velocity += dir * dmg * 8f;
         if (!v.God) v.Health -= dmg;
-        Events.Add(new GameEvent(EventKind.Hurt, v.Move.Position, Arg: v == Player ? 1 : 0));
+        var flags = (by == Player ? HurtFlags.ByHuman : 0) | (v == Player ? HurtFlags.VictimHuman : 0) | (v.Health <= 0 ? HurtFlags.Killing : 0);
+        Events.Add(new GameEvent(EventKind.Hurt, v.Move.Position, new Vector3(dmg, (float)flags, 0), v.Id));
         if (v.Health <= 0) Die(v, by, weapon);
     }
 

@@ -60,7 +60,7 @@ The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furna
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
 - **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
-- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, zoom FOV, plain blocks (flat untextured rendering; also `r_plain 1` in the console), key bindings. Left/Right adjust; Esc goes back.
+- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, zoom FOV, plain blocks (flat untextured rendering; also `r_plain 1` in the console), damage numbers, key bindings. Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
 Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Game/Splash.cs`.
@@ -119,3 +119,12 @@ Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open
   end of the east ledge. You spawn with 50 cells and 5 slugs. Bots use both (lightning at mid range, rockets further out, the rail at long range
   once they are skilled enough) and now only chase items on their own level.
 - Cheats: `give cells|slugs [n]`, `giveall` / `impulse 9` include everything.
+
+## Hit feedback
+
+- **Hit flash**: enemies (bots and dummies) light up bright white for a moment when you damage them (`cl_hitflash 0` turns it off).
+- **Red crosshair**: the crosshair turns red and thickens when the weapon in your hands would hit a living enemy right now, so it respects reach:
+  the lightning gun only goes red within 768 units, the axe within 64, the rail across the whole map, and walls in the way keep it white.
+- **Damage numbers**: arcade-style numbers pop above an enemy's head when you hit it, then float up and fade. Rapid hits (the lightning gun, shotgun
+  pellets) merge into one running total that re-pops as it grows. Colour goes white, yellow, orange, red with size, and killing blows are big, red and end in `!`.
+  Toggle with Options > DAMAGE NUMBERS or `cl_damagenumbers 0|1` (on by default).
