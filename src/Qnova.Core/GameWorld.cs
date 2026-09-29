@@ -48,9 +48,15 @@ public sealed class GameWorld
     {
         var p = Player;
         var def = WeaponDef.Get(p.Current);
-        if (p.Ammo(def.Ammo) < def.AmmoPerShot) return;   // caller may auto-switch
+        if (p.Ammo(def.Ammo) < def.AmmoPerShot)
+        {
+            p.NextFire = Time + 0.25f;   // rate-limit the empty click
+            Events.Add(new GameEvent(EventKind.DryFire, p.Eye, Arg: (int)def.Id));
+            return;
+        }
         p.Spend(def.Ammo, def.AmmoPerShot);
         p.NextFire = Time + def.Refire;
+        Events.Add(new GameEvent(EventKind.Shot, p.Eye, Arg: (int)def.Id));
 
         var dir = p.Look;
         switch (def.Mode)
@@ -132,6 +138,7 @@ public sealed class GameWorld
                 if (pr.Kind == ProjectileKind.Grenade)
                 {
                     pr.Vel = PlayerMove.Clip(pr.Vel, wall.Normal, 1.5f);
+                    if (pr.Vel.LengthSquared() > 50f * 50f) Events.Add(new GameEvent(EventKind.Bounce, pr.Pos));
                     if (wall.Normal.Y > 0.7f) pr.Vel *= new Vector3(0.7f, 0.5f, 0.7f); // floor friction
                 }
                 else

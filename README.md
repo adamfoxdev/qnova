@@ -12,8 +12,11 @@ dotnet test
 dotnet run --project src/Qnova.Game
 ```
 
-Controls: WASD, Space (jump, release between hops), mouse look, LMB fire, 1-7 or wheel to change weapon, R reset.
+Controls: WASD, Space (jump, release between hops), mouse look, LMB fire, 1-7 or wheel to change weapon, M mute, R reset.
 
 Weapons (Q1 stats): Axe, Shotgun (6x4), Double Shotgun (14x4), Nailgun (9), Super Nailgun (18),
 Grenade Launcher (bouncing, 2.5s fuse), Rocket Launcher (100-120 direct, 120 splash, self-damage halved,
 knockback = damage x 8 so rocket jumps work).
+
+Sound: all effects (weapon fire, grenade bounce, dry-fire click, explosions) are synthesized in code by
+`SoundSynth` in `Qnova.Core`, so there are no audio assets to ship. Volume falls off with distance.
