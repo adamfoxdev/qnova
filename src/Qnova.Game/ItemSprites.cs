@@ -25,7 +25,7 @@ sealed class ItemSprites : IDisposable
         Raylib.UnloadTexture(_glow);
     }
 
-    static Texture2D Upload(Canvas c)
+    internal static Texture2D Upload(Canvas c)
     {
         var img = Raylib.GenImageColor(Size, Size, new Color(0, 0, 0, 0));
         for (int y = 0; y < Size; y++)
@@ -40,7 +40,7 @@ sealed class ItemSprites : IDisposable
         return tex;
     }
 
-    sealed class Canvas
+    internal sealed class Canvas
     {
         public readonly Color[] Px = new Color[Size * Size];
         public void Set(int x, int y, Color c) { if ((uint)x < Size && (uint)y < Size) Px[y * Size + x] = c; }
@@ -83,8 +83,8 @@ sealed class ItemSprites : IDisposable
         }
     }
 
-    static Color C(int r, int g, int b) => new(r, g, b, 255);
-    static Color Lit(Color c, float f) => new((byte)Math.Clamp(c.R * f, 0, 255), (byte)Math.Clamp(c.G * f, 0, 255), (byte)Math.Clamp(c.B * f, 0, 255), (byte)255);
+    internal static Color C(int r, int g, int b) => new(r, g, b, 255);
+    internal static Color Lit(Color c, float f) => new((byte)Math.Clamp(c.R * f, 0, 255), (byte)Math.Clamp(c.G * f, 0, 255), (byte)Math.Clamp(c.B * f, 0, 255), (byte)255);
 
     static readonly Color Steel = C(120, 124, 136), DarkSteel = C(70, 72, 82), Wood = C(126, 84, 44), DarkWood = C(84, 54, 30),
         Brass = C(214, 172, 60), Olive = C(96, 110, 58), Red = C(200, 50, 44), Blue = C(70, 140, 255), Cyan = C(90, 240, 220), White = C(236, 236, 240);

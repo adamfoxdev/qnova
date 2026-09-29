@@ -12,6 +12,7 @@ public sealed class Player
     public const int MaxShells = 100, MaxNails = 200, MaxRockets = 100, MaxCells = 200, MaxSlugs = 50;
     public WeaponId Current = WeaponId.Shotgun;
     public float NextFire;
+    public float LastFire = -10f;   // game time of the most recent shot (drives the enemy sprite's firing pose)
     public int Frags, Deaths;
     public bool God;
     public string Name = "Player";
