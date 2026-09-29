@@ -188,6 +188,8 @@ public static class Arena
         Gun(WeaponId.SuperNailgun, 1600, 16, -1500);
         Gun(WeaponId.GrenadeLauncher, -1600, 16, 1500);
         Gun(WeaponId.RocketLauncher, 1950, 144, 0);
+        Gun(WeaponId.LightningGun, 1600, 16, 1350);       // bunker D (the last bunker without a gun)
+        Gun(WeaponId.Railgun, 1950, 144, -820);           // far end of the east ledge, the contested high ground
 
         // Health (25 each)
         Health(200, 144, 200); Health(-200, 144, -200);
@@ -200,6 +202,8 @@ public static class Arena
         Ammo(PickupKind.Nails, 50, 800, 16, -900); Ammo(PickupKind.Nails, 50, -800, 16, 900);
         Ammo(PickupKind.Rockets, 5, 900, 16, -780); Ammo(PickupKind.Rockets, 5, -900, 16, 780);
         Ammo(PickupKind.Rockets, 5, 1950, 144, 300);
+        Ammo(PickupKind.Cells, 60, -1300, 16, -300); Ammo(PickupKind.Cells, 60, 1300, 16, 300);
+        Ammo(PickupKind.Slugs, 10, -1100, 16, 250); Ammo(PickupKind.Slugs, 10, 1100, 16, -250);
     }
 
     /// <summary>A 512 x 512 walled compound centred at (cx, cz); doorways open toward the map centre (sx, sz = corner signs).</summary>

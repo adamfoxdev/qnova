@@ -14,6 +14,8 @@ public static class GameCommands
         ("supernailgun", WeaponId.SuperNailgun), ("sng", WeaponId.SuperNailgun),
         ("grenadelauncher", WeaponId.GrenadeLauncher), ("gl", WeaponId.GrenadeLauncher),
         ("rocketlauncher", WeaponId.RocketLauncher), ("rl", WeaponId.RocketLauncher),
+        ("lightninggun", WeaponId.LightningGun), ("lightning", WeaponId.LightningGun), ("lg", WeaponId.LightningGun),
+        ("railgun", WeaponId.Railgun), ("rail", WeaponId.Railgun), ("rg", WeaponId.Railgun),
     };
 
     public static bool TryWeapon(string s, out WeaponId id)
@@ -65,27 +67,29 @@ public static class GameCommands
         }
         ToggleCheat("god", "sv_god", "god mode (no self damage)");
         ToggleCheat("noclip", "sv_noclip", "noclip (fly through walls)");
-        c.AddCommand("weapon", "weapon <1-7|name>", "Select a weapon", a =>
+        c.AddCommand("weapon", "weapon <1-9|name>", "Select a weapon", a =>
         {
-            if (a.Length < 1 || !TryWeapon(a[0], out var w)) { c.Print("usage: weapon <1-7|axe|sg|ssg|ng|sng|gl|rl>"); return; }
+            if (a.Length < 1 || !TryWeapon(a[0], out var w)) { c.Print("usage: weapon <1-9|axe|sg|ssg|ng|sng|gl|rl|lg|rail>"); return; }
             if (!p.Owned.Contains(w)) { c.Print($"you don't have the {WeaponDef.Get(w).Name}"); return; }
             p.Current = w; c.Print($"weapon: {WeaponDef.Get(w).Name}");
         });
-        c.AddCommand("give", "give <all|health|ammo|weapon> [amount]", "Give items", a =>
+        c.AddCommand("give", "give <all|health|ammo|shells|nails|rockets|cells|slugs|weapon> [amount]", "Give items", a =>
         {
-            if (a.Length < 1) { c.Print("usage: give <all|health|ammo|weapon> [amount]"); return; }
+            if (a.Length < 1) { c.Print("usage: give <all|health|ammo|shells|nails|rockets|cells|slugs|weapon> [amount]"); return; }
             int amt = a.Length > 1 && int.TryParse(a[1], out var n) ? n : -1;
             switch (a[0].ToLowerInvariant())
             {
                 case "all":
                     p.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());
-                    p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets; p.Health = p.MaxHealth;
+                    p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets; p.Cells = Player.MaxCells; p.Slugs = Player.MaxSlugs; p.Health = p.MaxHealth;
                     c.Print("gave everything"); break;
                 case "health": p.Health = amt >= 0 ? amt : p.MaxHealth; c.Print($"health {p.Health}"); break;
-                case "ammo": { int k = amt >= 0 ? amt : 100; p.Shells += k; p.Nails += k; p.Rockets += k; c.Print($"+{k} of each ammo"); break; }
+                case "ammo": { int k = amt >= 0 ? amt : 100; p.Shells += k; p.Nails += k; p.Rockets += k; p.Cells += k; p.Slugs += k; c.Print($"+{k} of each ammo"); break; }
                 case "shells": p.Shells += amt >= 0 ? amt : 25; c.Print($"shells {p.Shells}"); break;
                 case "nails": p.Nails += amt >= 0 ? amt : 100; c.Print($"nails {p.Nails}"); break;
                 case "rockets": p.Rockets += amt >= 0 ? amt : 10; c.Print($"rockets {p.Rockets}"); break;
+                case "cells": p.Cells += amt >= 0 ? amt : 50; c.Print($"cells {p.Cells}"); break;
+                case "slugs": p.Slugs += amt >= 0 ? amt : 10; c.Print($"slugs {p.Slugs}"); break;
                 default:
                     if (TryWeapon(a[0], out var w)) { p.Owned.Add(w); p.Current = w; c.Print($"gave {WeaponDef.Get(w).Name}"); }
                     else c.Print($"don't know how to give \"{a[0]}\"");
@@ -105,8 +109,8 @@ public static class GameCommands
         void GiveArsenal()
         {
             p.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());
-            p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets;
-            c.Print($"all weapons and full ammo ({Player.MaxShells} shells, {Player.MaxNails} nails, {Player.MaxRockets} rockets)");
+            p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets; p.Cells = Player.MaxCells; p.Slugs = Player.MaxSlugs;
+            c.Print($"all weapons and full ammo ({Player.MaxShells} shells, {Player.MaxNails} nails, {Player.MaxRockets} rockets, {Player.MaxCells} cells, {Player.MaxSlugs} slugs)");
         }
         c.AddCommand("giveall", "giveall", "Give every weapon and full ammo (health untouched; 'give all' also heals)", a => GiveArsenal(), cheat: true);
         c.AddCommand("impulse", "impulse 9", "Quake-style: impulse 9 gives every weapon and full ammo", a =>
@@ -175,6 +179,6 @@ public static class GameCommands
                         (k.Active ? "ready" : $"back in {Math.Max(0f, k.RespawnAt - g.Time):0.0}s"));
         });
         c.AddCommand("stats", "stats", "Print player status", a =>
-            c.Print($"health {p.Health}  shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  frags {p.Frags}  weapon {WeaponDef.Get(p.Current).Name}"));
+            c.Print($"health {p.Health}  shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  cells {p.Cells}  slugs {p.Slugs}  frags {p.Frags}  weapon {WeaponDef.Get(p.Current).Name}"));
     }
 }

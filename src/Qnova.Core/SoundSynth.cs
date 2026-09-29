@@ -1,6 +1,6 @@
 namespace Qnova.Core;
 
-public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn, MenuMove, MenuSelect, HookFire, HookHit, JumpPad }
+public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn, MenuMove, MenuSelect, HookFire, HookHit, JumpPad, LightningGun, Railgun }
 
 /// <summary>Procedurally synthesized 16-bit mono sound effects, so the game ships no audio assets.</summary>
 public static class SoundSynth
@@ -15,6 +15,8 @@ public static class SoundSynth
         WeaponId.Nailgun => SoundId.Nailgun,
         WeaponId.SuperNailgun => SoundId.SuperNailgun,
         WeaponId.GrenadeLauncher => SoundId.GrenadeLaunch,
+        WeaponId.LightningGun => SoundId.LightningGun,
+        WeaponId.Railgun => SoundId.Railgun,
         _ => SoundId.RocketLaunch,
     };
 
@@ -56,6 +58,11 @@ public static class SoundSynth
             SoundId.ItemRespawn => Mix(Tone(0.3f, 300, 600, decay: 0.09f, gain: 0.45f)),
             SoundId.MenuMove => Mix(Tone(0.06f, 520, 380, decay: 0.02f, gain: 0.45f, square: true)),
             SoundId.MenuSelect => Mix(Tone(0.25f, 160, 60, decay: 0.08f, gain: 0.9f), Noise(rng, 0.12f, 0.03f, lowpass: 0.5f, gain: 0.5f)),
+            SoundId.LightningGun => Mix(Noise(rng, 0.11f, 0.05f, lowpass: 0.85f, gain: 0.7f), Tone(0.11f, 240, 190, decay: 0.06f, gain: 0.35f, square: true), Tone(0.09f, 1900, 2400, decay: 0.03f, gain: 0.25f, square: true)),
+            SoundId.Railgun => Mix(
+                Tone(0.55f, 260, 2600, decay: 0.28f, gain: 0.45f),                 // charge whine sweeping up
+                Delay(Noise(rng, 0.3f, 0.06f, lowpass: 0.9f, gain: 1.0f), 0.18f),   // the crack
+                Delay(Tone(0.4f, 90, 40, decay: 0.15f, gain: 0.9f), 0.18f)),        // low thump
             SoundId.HookFire => Mix(Noise(rng, 0.18f, 0.05f, lowpass: 0.6f, gain: 0.55f), Tone(0.16f, 1700, 500, decay: 0.05f, gain: 0.3f, square: true)),
             SoundId.HookHit => Mix(Tone(0.2f, 950, 950, decay: 0.035f, gain: 0.5f, square: true), Tone(0.28f, 320, 110, decay: 0.09f, gain: 0.8f), Noise(rng, 0.08f, 0.02f, lowpass: 0.7f, gain: 0.4f)),
             SoundId.JumpPad => Mix(Tone(0.4f, 170, 950, decay: 0.22f, gain: 0.7f), Noise(rng, 0.18f, 0.05f, lowpass: 0.5f, gain: 0.3f)),

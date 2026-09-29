@@ -40,6 +40,7 @@ public sealed class Bot
         int skill = Math.Clamp(g.BotSkill, 1, 5);
         // Bots don't scavenge for ammo; they simply never run dry.
         me.Shells = Math.Max(me.Shells, 20); me.Nails = Math.Max(me.Nails, 100); me.Rockets = Math.Max(me.Rockets, 10);
+        me.Cells = Math.Max(me.Cells, 100); me.Slugs = Math.Max(me.Slugs, 10);
 
         var enemy = g.Player;
         var pos = me.Move.Position;
@@ -62,7 +63,7 @@ public sealed class Bot
 
         if (see)
         {
-            ChooseWeapon(me, dist, t);
+            ChooseWeapon(me, dist, t, skill);
             var def = WeaponDef.Get(me.Current);
             var aim = AimPoint(enemy, def, dist, skill);
             var d = aim - me.Eye;
@@ -110,13 +111,15 @@ public sealed class Bot
         }
     }
 
-    void ChooseWeapon(Player me, float dist, float t)
+    void ChooseWeapon(Player me, float dist, float t, int skill)
     {
         if (t < _weaponCheck) return;
         _weaponCheck = t + 0.8f;
-        me.Current = dist < 320 ? WeaponId.SuperShotgun
-                   : dist < 1300 ? WeaponId.RocketLauncher
-                   : WeaponId.SuperNailgun;
+        // Close: double shotgun. Mid range: lightning up to its reach, rockets beyond. Far: the rail (better bots only).
+        me.Current = dist < 200 ? WeaponId.SuperShotgun
+                   : dist < 700 ? WeaponId.LightningGun
+                   : dist < 1500 ? WeaponId.RocketLauncher
+                   : skill >= 3 ? WeaponId.Railgun : WeaponId.SuperNailgun;
     }
 
     static Vector3 AimPoint(Player enemy, WeaponDef def, float dist, int skill)
@@ -145,6 +148,7 @@ public sealed class Bot
         foreach (var k in g.Pickups)
         {
             if (!k.Active) continue;
+            if (MathF.Abs(k.Position.Y - me.Move.Position.Y) > 70f) continue;   // steering can't climb, so only chase items on this level
             if (hurt) { if (k.Kind != PickupKind.Health) continue; float d = FlatDist(me.Move.Position, k.Position); if (d < bestD) { bestD = d; best = k; } }
             else ready.Add(k);
         }

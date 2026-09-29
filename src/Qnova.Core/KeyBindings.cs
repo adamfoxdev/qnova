@@ -4,7 +4,7 @@ namespace Qnova.Core;
 public enum InputAction
 {
     Forward, Back, MoveLeft, MoveRight, Jump, Fire, Zoom, Grapple,
-    Weapon1, Weapon2, Weapon3, Weapon4, Weapon5, Weapon6, Weapon7,
+    Weapon1, Weapon2, Weapon3, Weapon4, Weapon5, Weapon6, Weapon7, Weapon8, Weapon9,
     NextWeapon, PrevWeapon, Mute, Respawn,
 }
 
@@ -30,6 +30,8 @@ public sealed class KeyBindings
         (InputAction.Weapon5,     "weapon5",    "SUPER NAILGUN",  "FIVE"),
         (InputAction.Weapon6,     "weapon6",    "GRENADE LAUNCHER", "SIX"),
         (InputAction.Weapon7,     "weapon7",    "ROCKET LAUNCHER", "SEVEN"),
+        (InputAction.Weapon8,     "weapon8",    "LIGHTNING GUN",  "EIGHT"),
+        (InputAction.Weapon9,     "weapon9",    "RAILGUN",        "NINE"),
         (InputAction.NextWeapon,  "nextweapon", "NEXT WEAPON",    "MWHEELUP"),
         (InputAction.PrevWeapon,  "prevweapon", "PREVIOUS WEAPON", "MWHEELDOWN"),
         (InputAction.Mute,        "mute",       "MUTE SOUND",     "M"),

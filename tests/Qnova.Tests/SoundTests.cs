@@ -47,6 +47,8 @@ public class SoundTests
     [InlineData(WeaponId.SuperNailgun, SoundId.SuperNailgun)]
     [InlineData(WeaponId.GrenadeLauncher, SoundId.GrenadeLaunch)]
     [InlineData(WeaponId.RocketLauncher, SoundId.RocketLaunch)]
+    [InlineData(WeaponId.LightningGun, SoundId.LightningGun)]
+    [InlineData(WeaponId.Railgun, SoundId.Railgun)]
     public void Weapon_maps_to_its_sound(WeaponId w, SoundId s) => Assert.Equal(s, SoundSynth.ForWeapon(w));
 
     static GameWorld Flat()
