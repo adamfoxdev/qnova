@@ -54,6 +54,7 @@ grenade launcher in the bunkers, rocket launcher on the east ledge. A collected 
 (`sv_pickup_respawn`), then respawns with a sound. Items you can't use (full health, full ammo) stay put; ammo caps at
 100 shells / 200 nails / 100 rockets. Bots collect items too and head for health when hurt. `pickups` lists what's ready.
 Pickups are drawn as procedurally painted pixel-art sprites (no image files): a distinct silhouette for each of the eight guns, a first-aid case, and shells / nails / rockets / cells / slugs, each on a coloured glow that matches its light. They bob over a floor pad and always face the camera; `r_plain 1` swaps them back to flat coloured cubes.
+Bots are drawn the same way: a hulking pixel-art ogre with tusks and glowing eyes, wearing red or blue spiked pauldrons, that faces you or turns its back depending on where it is looking, walks, and throws up a muzzle flash when it fires; a hit lights it up white. `r_plain 1` returns the flat cube bots.
 
 ## Map editor
 

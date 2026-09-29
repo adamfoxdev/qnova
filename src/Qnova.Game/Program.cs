@@ -7,6 +7,7 @@ static Vector3 R(Vector3 v) => v * S;
 
 // Developer flags (used to capture screenshots headlessly): --start, --paused, --options, --console, --lock-look, --pos "x y z", --yaw, --pitch, --exec "<console line>", --shot <png> [--shot-after <sec>]
 string? Arg(string name) { int i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+if (Arg("--sprite-sheet") is { } sheetPath) { EnemySprites.WriteContactSheet(sheetPath); return; }   // dev: dump the enemy art and exit
 bool devLock = args.Contains("--lock-look");   // ignore mouse look (keeps screenshots framed)
 bool devStart = args.Contains("--start"), devConsole = args.Contains("--console");
 string? devExec = Arg("--exec"), shotPath = Arg("--shot"), devPos = Arg("--pos");
@@ -85,6 +86,7 @@ var menu = MenuModel.Create(game, () => started, () =>
 
 var mapRenderer = new MapRenderer();
 var itemSprites = new ItemSprites();
+var enemySprites = new EnemySprites();
 var dynLights = new List<(Vector3 Pos, Vector3 Color, float Radius, float Start, float Duration)>();   // explosions and muzzle flashes
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
 var tracers = new List<(Vector3 A, Vector3 B, float Until, int Weapon, float Start)>();
@@ -489,17 +491,33 @@ while (!quit && !Raylib.WindowShouldClose())
     {
         var bp = b.Body;
         if (!bp.Alive) continue;
-        var body = bp.Team == Team.Red ? new Color(200, 60, 50, 255) : new Color(70, 120, 210, 255);
         float bf = FlashAmount(bp.Id, now2);
-        mapRenderer.Begin();
-        if (bf > 0) MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Emissive, Mix(Dim(body, 0.55f), new Color(235, 235, 235, 255), bf));
-        else MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Flat, body);
-        MapRenderer.Box(Aabb.FromCenter(bp.Move.Position + new Vector3(0, 40, 0), new Vector3(8, 8, 8)), Surface.Flat, new Color(225, 195, 165, 255));
-        mapRenderer.End();
-        Raylib.DrawSphere(R(bp.Move.Position + new Vector3(0, 34, 0)), 0.32f, Mix(new Color(230, 200, 170, 255), new Color(255, 255, 255, 255), bf));
-        var look = bp.Look;
-        Raylib.DrawLine3D(R(bp.Eye), R(bp.Eye + look * 40f), Color.Red);   // gun barrel: shows where it is aiming
-        Raylib.DrawCubeV(R(bp.Eye + look * 22f), new Vector3(0.12f, 0.12f, 0.12f) + Vector3.Abs(look) * 0.5f, new Color(40, 40, 40, 255));
+        if (plainBlocks)
+        {
+            var body = bp.Team == Team.Red ? new Color(200, 60, 50, 255) : new Color(70, 120, 210, 255);
+            mapRenderer.Begin();
+            if (bf > 0) MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Emissive, Mix(Dim(body, 0.55f), new Color(235, 235, 235, 255), bf));
+            else MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Flat, body);
+            MapRenderer.Box(Aabb.FromCenter(bp.Move.Position + new Vector3(0, 40, 0), new Vector3(8, 8, 8)), Surface.Flat, new Color(225, 195, 165, 255));
+            mapRenderer.End();
+            Raylib.DrawSphere(R(bp.Move.Position + new Vector3(0, 34, 0)), 0.32f, Mix(new Color(230, 200, 170, 255), new Color(255, 255, 255, 255), bf));
+            var look = bp.Look;
+            Raylib.DrawLine3D(R(bp.Eye), R(bp.Eye + look * 40f), Color.Red);   // gun barrel: shows where it is aiming
+            Raylib.DrawCubeV(R(bp.Eye + look * 22f), new Vector3(0.12f, 0.12f, 0.12f) + Vector3.Abs(look) * 0.5f, new Color(40, 40, 40, 255));
+            continue;
+        }
+        // the sprite is 64 units square with the soldier standing on its bottom edge; the hull centre is 28 above the floor
+        var flatSpeed = MathF.Sqrt(bp.Move.Velocity.X * bp.Move.Velocity.X + bp.Move.Velocity.Z * bp.Move.Velocity.Z);
+        var frame = EnemySprite.Pick(bp.Move.Position, bp.Look, p.Eye, flatSpeed, game.Time - bp.LastFire, now2);
+        var sat = R(bp.Move.Position + new Vector3(0, 4f, 0));
+        var stex = enemySprites.Get(bp.Team, frame);
+        Raylib.DrawBillboard(cam, stex, sat, 2.0f, Color.White);
+        if (bf > 0)   // a fresh hit lights the sprite up white, easing back to normal
+        {
+            Raylib.BeginBlendMode(BlendMode.Additive);
+            Raylib.DrawBillboard(cam, stex, sat, 2.0f, new Color((byte)(200 * bf), (byte)(200 * bf), (byte)(200 * bf), (byte)255));
+            Raylib.EndBlendMode();
+        }
     }
     foreach (var hc in game.Combatants)   // grappling hooks: a rope from the hand to the tip
     {
@@ -667,4 +685,5 @@ mapRenderer.Unload();
 splash.Unload();
 ui.Unload();
 itemSprites.Dispose();
+enemySprites.Dispose();
 Raylib.CloseWindow();

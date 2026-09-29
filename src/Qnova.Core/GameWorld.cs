@@ -338,7 +338,7 @@ public sealed partial class GameWorld
             return;
         }
         if (!(InfiniteAmmo && p == Player)) p.Spend(def.Ammo, def.AmmoPerShot);
-        p.NextFire = Time + def.Refire;
+        p.NextFire = Time + def.Refire; p.LastFire = Time;
         Events.Add(new GameEvent(EventKind.Shot, p.Eye, Arg: (int)def.Id));
 
         var dir = p.Look;
