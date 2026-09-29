@@ -181,6 +181,13 @@ public sealed class MenuModel
         // Fresh maps: a new random seed each time (console: "map random <seed>" replays one), or back to the hand-built arena.
         root.Items.Add(new MenuItem { Label = () => "RANDOM MAP", OnSelect = () => { g.LoadRandomMap(); start(); } });
         root.Items.Add(new MenuItem { Label = () => "CLASSIC ARENA", OnSelect = () => { g.LoadClassicArena(); start(); } });
+        root.Items.Add(new MenuItem
+        {
+            Label = () => "GAME MODE",
+            Value = () => g.IsCtf ? "CAPTURE THE FLAG" : "DEATHMATCH",
+            OnSelect = () => { g.SetMode(g.IsCtf ? GameMode.Deathmatch : GameMode.Ctf); start(); },
+            OnAdjust = _ => g.SetMode(g.IsCtf ? GameMode.Deathmatch : GameMode.Ctf),
+        });
         root.Items.Add(new MenuItem { Label = () => "OPTIONS", OnSelect = () => m.Push(options) });
         root.Items.Add(new MenuItem { Label = () => "QUIT", OnSelect = quit });
         return m;

@@ -1,6 +1,6 @@
 namespace Qnova.Core;
 
-public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn, MenuMove, MenuSelect, HookFire, HookHit, JumpPad, LightningGun, Railgun }
+public enum SoundId { Axe, Shotgun, SuperShotgun, Nailgun, SuperNailgun, GrenadeLaunch, RocketLaunch, Explosion, Bounce, DryFire, Pickup, PickupWeapon, PickupHealth, ItemRespawn, MenuMove, MenuSelect, HookFire, HookHit, JumpPad, LightningGun, Railgun, FlagTaken, FlagCapture, FlagReturn }
 
 /// <summary>Procedurally synthesized 16-bit mono sound effects, so the game ships no audio assets.</summary>
 public static class SoundSynth
@@ -66,6 +66,9 @@ public static class SoundSynth
             SoundId.HookFire => Mix(Noise(rng, 0.18f, 0.05f, lowpass: 0.6f, gain: 0.55f), Tone(0.16f, 1700, 500, decay: 0.05f, gain: 0.3f, square: true)),
             SoundId.HookHit => Mix(Tone(0.2f, 950, 950, decay: 0.035f, gain: 0.5f, square: true), Tone(0.28f, 320, 110, decay: 0.09f, gain: 0.8f), Noise(rng, 0.08f, 0.02f, lowpass: 0.7f, gain: 0.4f)),
             SoundId.JumpPad => Mix(Tone(0.4f, 170, 950, decay: 0.22f, gain: 0.7f), Noise(rng, 0.18f, 0.05f, lowpass: 0.5f, gain: 0.3f)),
+            SoundId.FlagTaken => Mix(Tone(0.5f, 440, 440, decay: 0.15f, gain: 0.6f), Delay(Tone(0.5f, 330, 330, decay: 0.15f, gain: 0.6f), 0.15f)),
+            SoundId.FlagCapture => Mix(Tone(0.6f, 523, 523, decay: 0.2f, gain: 0.5f), Delay(Tone(0.6f, 659, 659, decay: 0.2f, gain: 0.5f), 0.1f), Delay(Tone(0.8f, 784, 784, decay: 0.3f, gain: 0.5f), 0.2f)),
+            SoundId.FlagReturn => Mix(Tone(0.35f, 700, 350, decay: 0.12f, gain: 0.5f)),
             _ => Mix(Tone(0.05f, 900, 600, decay: 0.012f, gain: 0.5f, square: true)),
         };
     }

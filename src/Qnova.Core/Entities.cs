@@ -17,6 +17,7 @@ public sealed class Player
     public string Name = "Player";
     public int Id;                // 0 = the human, 1.. = bots (used to tell victims apart in events)
     public bool IsBot;
+    public Team Team;             // None outside capture the flag
     public readonly Hook Hook = new();
     public bool GrappleHeld;      // previous-tick state of the grapple key (for press detection)
     public float PadCooldownUntil;
@@ -86,7 +87,7 @@ public sealed class Projectile
     public float Splash;
 }
 
-public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, DryFire, Pickup, ItemRespawn, HookFire, HookAttach, JumpPad }
+public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, DryFire, Pickup, ItemRespawn, HookFire, HookAttach, JumpPad, FlagTaken, FlagDropped, FlagReturned, FlagCaptured }
 
 /// <summary>Hurt events: A = victim centre, B.X = damage dealt, B.Y = <see cref="HurtFlags"/>, Arg = victim id (players 0.., dummies 1000 + index).
 /// Arg carries the (int)WeaponId for Shot/DryFire and the (int)PickupKind for Pickup/ItemRespawn (B.X = 1 when the human collected it).</summary>

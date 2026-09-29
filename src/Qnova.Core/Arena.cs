@@ -72,7 +72,13 @@ public static class Arena
     }
 
     /// <summary>The classic arena as loadable map data (for switching back to it at runtime).</summary>
-    public static MapData Data() => MapData.From(Build(bots: 0), "Classic Arena", 0, Half, Height);
+    public static MapData Data()
+    {
+        var m = MapData.From(Build(bots: 0), "Classic Arena", 0, Half, Height);
+        m.RedFlag = new Vector3(0, 40, -1850);      // north and south walls, each behind a cover wall
+        m.BlueFlag = new Vector3(0, 40, 1850);
+        return m;
+    }
 
     /// <summary>Visual dressing: ceiling girders, trim, pillar collars, glowing fixtures and the lights they cast.</summary>
     static void AddVisuals(GameWorld g)

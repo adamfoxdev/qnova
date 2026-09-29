@@ -185,6 +185,21 @@ public static class GameCommands
             }
             c.Print("usage: map [arena|random [seed]]");
         });
+        c.AddCvar("capturelimit", g.CaptureLimit, "Captures needed to win a capture-the-flag match", v => g.CaptureLimit = Math.Max(1, (int)v));
+        c.AddCommand("gamemode", "gamemode [dm|ctf]", "Show or switch the game mode (reloads the current map)", a =>
+        {
+            if (a.Length == 0) { c.Print($"game mode: {(g.IsCtf ? "capture the flag" : "deathmatch")}"); return; }
+            if (a[0].Equals("ctf", StringComparison.OrdinalIgnoreCase)) { g.SetMode(GameMode.Ctf); c.Print("capture the flag"); }
+            else if (a[0].Equals("dm", StringComparison.OrdinalIgnoreCase)) { g.SetMode(GameMode.Deathmatch); c.Print("deathmatch"); }
+            else c.Print("usage: gamemode [dm|ctf]");
+        });
+        c.AddCommand("flags", "flags", "Show the score and where each flag is", a =>
+        {
+            if (!g.IsCtf) { c.Print("not in capture the flag (gamemode ctf)"); return; }
+            c.Print($"RED {g.TeamScore[1]} - {g.TeamScore[2]} BLUE  (first to {g.CaptureLimit})");
+            foreach (var f in g.Flags)
+                c.Print($"{f.Team.Label()} flag: {f.State}" + (f.Carrier != null ? $" by {f.Carrier.Name}" : ""));
+        });
         c.AddCommand("pickups", "pickups", "List pickups and seconds until each returns", a =>
         {
             foreach (var k in g.Pickups)

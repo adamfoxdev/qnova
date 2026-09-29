@@ -14,6 +14,7 @@ public sealed class MapData
     public float Half = 2048f;          // interior is 2*Half square
     public float Height = 768f;         // ceiling height
     public Vector3 PlayerSpawn;
+    public Vector3? RedFlag, BlueFlag;   // authored capture-the-flag bases (otherwise derived from the spawn points)
 
     public readonly List<Aabb> Solids = new();
     public readonly List<DecorBox> Decor = new();

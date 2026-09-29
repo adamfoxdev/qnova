@@ -8,6 +8,7 @@ namespace Qnova.Core;
 public sealed class Bot
 {
     public readonly Player Body;
+    public BotRole Role;
     readonly Random _rng;
 
     Vector3 _goal, _lastSeen;
@@ -45,7 +46,19 @@ public sealed class Bot
         var enemy = g.Player;
         var pos = me.Move.Position;
         bool see = false; float dist = 0;
-        if (enemy.Alive)
+        if (g.IsCtf)
+        {
+            // team play: fight the nearest visible opponent, human or bot
+            float bestD = float.MaxValue;
+            foreach (var o in g.Combatants)
+            {
+                if (o == me || !o.Alive || g.Friendly(me, o)) continue;
+                float d = Vector3.Distance(pos, o.Move.Position);
+                if (d < bestD && d < 3500 && (!g.Map.TraceRay(me.Eye, o.Move.Position).Hit || !g.Map.TraceRay(me.Eye, o.Eye).Hit))
+                { bestD = d; enemy = o; see = true; dist = d; }
+            }
+        }
+        else if (enemy.Alive)
         {
             dist = Vector3.Distance(pos, enemy.Move.Position);
             see = dist < 3500 && (!g.Map.TraceRay(me.Eye, enemy.Move.Position).Hit || !g.Map.TraceRay(me.Eye, enemy.Eye).Hit);
@@ -61,7 +74,9 @@ public sealed class Bot
         float desiredYaw = me.Yaw, desiredPitch = 0f;
         bool wantFire = false;
 
-        if (see)
+        // a flag carrier runs for home instead of duelling, unless the enemy is right on top of them
+        bool flee = see && g.IsCtf && g.Carrying(me) != null && dist > 350f;
+        if (see && !flee)
         {
             ChooseWeapon(me, dist, t, skill);
             var def = WeaponDef.Get(me.Current);
@@ -165,6 +180,17 @@ public sealed class Bot
     void Navigate(GameWorld g, Player me, float t, ref UserCmd cmd, out float desiredYaw)
     {
         var pos = me.Move.Position;
+        if (g.IsCtf && CtfGoal(g, me, t) is { } obj)
+        {
+            _goal = obj; _goalPickup = null;
+            if (t >= _stuckCheck)
+            {
+                if (_stuckCheck > 0 && Vector3.Distance(pos, _stuckPos) < 30f) { _detour = Rand(-100f, 100f); _detourUntil = t + 1.0f; }
+                _stuckPos = pos; _stuckCheck = t + 1.5f;
+            }
+            Steer(g, me, t, ref cmd, out desiredYaw);
+            return;
+        }
         bool chasing = _hasLast && t - _lastSeenTime < 8f && Vector3.Distance(pos, _lastSeen) > 150f;
         if (chasing) _goal = _lastSeen;
         else if (t >= _goalUntil || (_goalPickup != null ? !_goalPickup.Active : FlatDist(pos, _goal) < 120f))
@@ -192,6 +218,36 @@ public sealed class Bot
             _stuckPos = pos; _stuckCheck = t + 1.5f;
         }
 
+        Steer(g, me, t, ref cmd, out desiredYaw);
+    }
+
+    Vector3 _patrol; float _patrolUntil;
+
+    /// <summary>Where a capture-the-flag bot should be heading, or null to fall back on the ordinary roaming.</summary>
+    Vector3? CtfGoal(GameWorld g, Player me, float t)
+    {
+        var own = g.FlagOf(me.Team); var theirs = g.FlagOf(me.Team.Other());
+        if (own == null || theirs == null) return null;
+        if (g.Carrying(me) != null) return own.Home;                                           // bring it home
+        if (own.State == FlagState.Dropped) return own.Pos;                                    // send our flag back
+        if (own.State == FlagState.Carried && own.Carrier != null) return own.Carrier.Move.Position;   // hunt the thief
+        if (Role == BotRole.Attack)
+        {
+            if (theirs.State == FlagState.Carried && theirs.Carrier != null && g.Friendly(me, theirs.Carrier))
+                return theirs.Carrier.Move.Position;                                           // escort our carrier
+            return theirs.Pos;
+        }
+        if (t >= _patrolUntil)                                                                 // defend: loiter around our base
+        {
+            _patrol = own.Home + new Vector3(Rand(-350f, 350f), 0, Rand(-350f, 350f));
+            _patrolUntil = t + Rand(3f, 6f);
+        }
+        return _patrol;
+    }
+
+    void Steer(GameWorld g, Player me, float t, ref UserCmd cmd, out float desiredYaw)
+    {
+        var pos = me.Move.Position;
         var flat = new Vector3(_goal.X - pos.X, 0, _goal.Z - pos.Z);
         if (flat.LengthSquared() < 1f) flat = PlayerMove.ForwardFlat(me.Yaw);
         float heading = YawOf(flat) + (t < _detourUntil ? _detour : 0f);
