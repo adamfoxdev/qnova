@@ -218,4 +218,5 @@ while (!quit && !Raylib.WindowShouldClose())
 }
 foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
 if (audioOk) Raylib.CloseAudioDevice();
+ui.Unload();
 Raylib.CloseWindow();
