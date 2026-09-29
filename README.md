@@ -60,7 +60,7 @@ The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furna
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
 - **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
-- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop. Left/Right adjust; Esc goes back.
+- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, plain blocks (flat untextured rendering; also `r_plain 1` in the console). Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
 Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Game/Splash.cs`.

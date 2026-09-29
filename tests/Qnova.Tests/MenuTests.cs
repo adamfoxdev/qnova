@@ -14,6 +14,7 @@ public class MenuTests
         g.Console.AddCvar("sensitivity", 0.10f);
         g.Console.AddCvar("fov", 90f);
         g.Console.AddCvar("volume", 1f);
+        g.Console.AddCvar("r_plain", 0f);
         return g;
     }
 
@@ -129,6 +130,24 @@ public class MenuTests
         Assert.True(g.Player.Move.AutoHop);
         m.Adjust(-1);
         Assert.Equal("OFF", m.SelectedItem.Value!());
+    }
+
+    [Fact]
+    public void Plain_blocks_option_toggles_the_render_cvar()
+    {
+        var g = Game();
+        var (m, _) = Make(g);
+        m.SetSelected(1); m.Select();
+        m.SetSelected(6);
+        Assert.Equal("PLAIN BLOCKS", m.SelectedItem.Label());
+        Assert.Equal("OFF", m.SelectedItem.Value!());
+        m.Select();
+        Assert.Equal(1f, g.Console.Get("r_plain"));
+        Assert.Equal("ON", m.SelectedItem.Value!());
+        m.Adjust(-1);                                   // Left/Right toggle too
+        Assert.Equal(0f, g.Console.Get("r_plain"));
+        m.Move(1);
+        Assert.Equal("BACK", m.SelectedItem.Label());
     }
 
     [Fact]

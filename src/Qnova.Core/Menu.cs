@@ -102,6 +102,15 @@ public sealed class MenuModel
             Value = () => g.Console.Get("sv_autohop") != 0 ? "ON" : "OFF",
             OnAdjust = _ => g.Console.Execute($"sv_autohop {(g.Console.Get("sv_autohop") != 0 ? 0 : 1)}", echo: false),
         });
+        options.Items.Add(new MenuItem
+        {
+            Label = () => "PLAIN BLOCKS",
+            Value = () => g.Console.TryGet("r_plain", out var v) ? (v != 0 ? "ON" : "OFF") : "n/a",
+            OnAdjust = _ =>
+            {
+                if (g.Console.TryGet("r_plain", out var v)) g.Console.Execute($"r_plain {(v != 0 ? 0 : 1)}", echo: false);
+            },
+        });
         options.Items.Add(new MenuItem { Label = () => "BACK", OnSelect = () => m.Back() });
 
         root.Items.Add(new MenuItem { Label = () => hasStarted() ? "RESUME GAME" : "START GAME", OnSelect = start });
