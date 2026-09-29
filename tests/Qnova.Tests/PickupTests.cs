@@ -191,14 +191,16 @@ public class PickupTests
     public void Arena_has_a_sensible_set_of_valid_pickups()
     {
         var g = Arena.Build(bots: 0);
-        Assert.Equal(5, g.Pickups.Count(k => k.Kind == PickupKind.Weapon));
+        Assert.Equal(7, g.Pickups.Count(k => k.Kind == PickupKind.Weapon));
         Assert.Equal(
-            new[] { WeaponId.SuperShotgun, WeaponId.Nailgun, WeaponId.SuperNailgun, WeaponId.GrenadeLauncher, WeaponId.RocketLauncher }.OrderBy(x => x),
+            new[] { WeaponId.SuperShotgun, WeaponId.Nailgun, WeaponId.SuperNailgun, WeaponId.GrenadeLauncher, WeaponId.RocketLauncher, WeaponId.LightningGun, WeaponId.Railgun }.OrderBy(x => x),
             g.Pickups.Where(k => k.Kind == PickupKind.Weapon).Select(k => k.Weapon).OrderBy(x => x));
         Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Health) >= 5);
         Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Shells) >= 2);
         Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Nails) >= 2);
         Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Rockets) >= 2);
+        Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Cells) >= 2);
+        Assert.True(g.Pickups.Count(k => k.Kind == PickupKind.Slugs) >= 2);
         foreach (var k in g.Pickups)
         {
             Assert.True(g.Map.IsEmpty(k.Position, Pickup.Half), $"{k.Name} at {k.Position} is inside geometry");

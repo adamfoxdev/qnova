@@ -7,9 +7,9 @@ public sealed class Player
     public PlayerMove Move;
     public float Yaw, Pitch;
     public int Health = 100, MaxHealth = 100;
-    public int Shells = 25, Nails = 100, Rockets = 10;
+    public int Shells = 25, Nails = 100, Rockets = 10, Cells = 50, Slugs = 5;
     public HashSet<WeaponId> Owned = new() { WeaponId.Axe, WeaponId.Shotgun };
-    public const int MaxShells = 100, MaxNails = 200, MaxRockets = 100;
+    public const int MaxShells = 100, MaxNails = 200, MaxRockets = 100, MaxCells = 200, MaxSlugs = 50;
     public WeaponId Current = WeaponId.Shotgun;
     public float NextFire;
     public int Frags, Deaths;
@@ -27,9 +27,9 @@ public sealed class Player
     public Vector3 Look => PlayerMove.LookDir(Yaw, Pitch);
     public bool Alive => Health > 0;
 
-    public int Ammo(AmmoType t) => t switch { AmmoType.Shells => Shells, AmmoType.Nails => Nails, AmmoType.Rockets => Rockets, _ => int.MaxValue };
+    public int Ammo(AmmoType t) => t switch { AmmoType.Shells => Shells, AmmoType.Nails => Nails, AmmoType.Rockets => Rockets, AmmoType.Cells => Cells, AmmoType.Slugs => Slugs, _ => int.MaxValue };
 
-    public int MaxAmmo(AmmoType t) => t switch { AmmoType.Shells => MaxShells, AmmoType.Nails => MaxNails, AmmoType.Rockets => MaxRockets, _ => 0 };
+    public int MaxAmmo(AmmoType t) => t switch { AmmoType.Shells => MaxShells, AmmoType.Nails => MaxNails, AmmoType.Rockets => MaxRockets, AmmoType.Cells => MaxCells, AmmoType.Slugs => MaxSlugs, _ => 0 };
 
     /// <summary>Add ammo up to the cap; returns how much was actually accepted.</summary>
     public int AddAmmo(AmmoType t, int n)
@@ -41,6 +41,8 @@ public sealed class Player
             case AmmoType.Shells: Shells += take; break;
             case AmmoType.Nails: Nails += take; break;
             case AmmoType.Rockets: Rockets += take; break;
+            case AmmoType.Cells: Cells += take; break;
+            case AmmoType.Slugs: Slugs += take; break;
         }
         return take;
     }
@@ -52,6 +54,8 @@ public sealed class Player
             case AmmoType.Shells: Shells -= n; break;
             case AmmoType.Nails: Nails -= n; break;
             case AmmoType.Rockets: Rockets -= n; break;
+            case AmmoType.Cells: Cells -= n; break;
+            case AmmoType.Slugs: Slugs -= n; break;
         }
     }
 }
@@ -86,7 +90,7 @@ public enum EventKind { Explosion, Impact, Tracer, Hurt, Kill, Shot, Bounce, Dry
 /// <summary>Arg carries the (int)WeaponId for Shot/DryFire and the (int)PickupKind for Pickup/ItemRespawn (B.X = 1 when the human collected it).</summary>
 public readonly record struct GameEvent(EventKind Kind, Vector3 A, Vector3 B = default, int Arg = 0);
 
-public enum PickupKind { Health, Shells, Nails, Rockets, Weapon }
+public enum PickupKind { Health, Shells, Nails, Rockets, Weapon, Cells, Slugs }
 
 /// <summary>A floor item. After being collected it is inactive until <see cref="RespawnAt"/>.</summary>
 public sealed class Pickup
@@ -106,6 +110,8 @@ public sealed class Pickup
         PickupKind.Shells => $"{Amount} shells",
         PickupKind.Nails => $"{Amount} nails",
         PickupKind.Rockets => $"{Amount} rockets",
+        PickupKind.Cells => $"{Amount} cells",
+        PickupKind.Slugs => $"{Amount} slugs",
         _ => WeaponDef.Get(Weapon).Name,
     };
 
@@ -115,6 +121,8 @@ public sealed class Pickup
         WeaponId.Shotgun or WeaponId.SuperShotgun => (AmmoType.Shells, 10),
         WeaponId.Nailgun or WeaponId.SuperNailgun => (AmmoType.Nails, 30),
         WeaponId.GrenadeLauncher or WeaponId.RocketLauncher => (AmmoType.Rockets, 5),
+        WeaponId.LightningGun => (AmmoType.Cells, 50),
+        WeaponId.Railgun => (AmmoType.Slugs, 10),
         _ => (AmmoType.None, 0),
     };
 }

@@ -80,7 +80,8 @@ var menu = MenuModel.Create(game, () => started, () =>
 var mapRenderer = new MapRenderer();
 var dynLights = new List<(Vector3 Pos, Vector3 Color, float Radius, float Start, float Duration)>();   // explosions and muzzle flashes
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
-var tracers = new List<(Vector3 A, Vector3 B, float Until)>();
+var tracers = new List<(Vector3 A, Vector3 B, float Until, int Weapon, float Start)>();
+float lastLgSound = -1f;   // the lightning gun fires ~18x/s; throttle its crackle so it doesn't machine-gun
 float yaw = -90, pitch = 0, acc = 0;
 bool fireHeld = false;
 float hurtUntil = 0;
@@ -298,9 +299,19 @@ while (!quit && !Raylib.WindowShouldClose())
             switch (e.Kind)
             {
                 case EventKind.Shot:
-                    Play(SoundSynth.ForWeapon((WeaponId)e.Arg), e.A, game.Player.Eye, 0.8f);
-                    if (e.Arg != (int)WeaponId.Axe) dynLights.Add((e.A, new Vector3(1.7f, 1.3f, 0.7f), 520f, (float)now, 0.08f));
+                {
+                    bool lg = e.Arg == (int)WeaponId.LightningGun;
+                    if (!lg || (float)now - lastLgSound > 0.11f)
+                    {
+                        Play(SoundSynth.ForWeapon((WeaponId)e.Arg), e.A, game.Player.Eye, 0.8f);
+                        if (lg) lastLgSound = (float)now;
+                    }
+                    if (e.Arg == (int)WeaponId.Axe) break;
+                    if (lg) dynLights.Add((e.A, new Vector3(0.45f, 0.8f, 1.7f), 360f, (float)now, 0.06f));
+                    else if (e.Arg == (int)WeaponId.Railgun) dynLights.Add((e.A, new Vector3(0.7f, 0.9f, 2.4f), 800f, (float)now, 0.18f));
+                    else dynLights.Add((e.A, new Vector3(1.7f, 1.3f, 0.7f), 520f, (float)now, 0.08f));
                     break;
+                }
                 case EventKind.DryFire: Play(SoundId.DryFire, e.A, game.Player.Eye, 0.6f); break;
                 case EventKind.Bounce: Play(SoundId.Bounce, e.A, game.Player.Eye, 0.7f); break;
                 case EventKind.Explosion:
@@ -316,7 +327,12 @@ while (!quit && !Raylib.WindowShouldClose())
                 case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
                 case EventKind.Hurt when e.Arg == 1: hurtUntil = (float)now + 0.25f; break;
                 case EventKind.Impact: effects.Add((e.A, (float)now + 0.1f, 4, Color.Yellow)); break;
-                case EventKind.Tracer: tracers.Add((e.A, e.B, (float)now + 0.05f)); break;
+                case EventKind.Tracer:
+                {
+                    float life = e.Arg == (int)WeaponId.Railgun ? 0.9f : e.Arg == (int)WeaponId.LightningGun ? 0.07f : 0.05f;
+                    tracers.Add((e.A, e.B, (float)now + life, e.Arg, (float)now));
+                    break;
+                }
             }
         }
         game.Events.Clear();
@@ -424,7 +440,56 @@ while (!quit && !Raylib.WindowShouldClose())
     foreach (var pr in game.Projectiles)
         Raylib.DrawSphere(R(pr.Pos), pr.Kind == ProjectileKind.Nail ? 0.05f : 0.15f, pr.Kind == ProjectileKind.Nail ? Color.Yellow : pr.Kind == ProjectileKind.Rocket ? Color.Red : Color.DarkGreen);
     foreach (var (pos, until, radius, color) in effects) Raylib.DrawSphere(R(pos), radius * S * (1 - (until - now2)), Raylib.Fade(color, 0.6f));
-    foreach (var (a, b, _) in tracers) Raylib.DrawLine3D(R(a + p.Look * 8 + new Vector3(0, -6, 0)), R(b), Color.Yellow);
+    var flashRng = new Random((int)(now2 * 90f));
+    float Thick(Vector3 worldPos, float perUnit) => 0.004f + perUnit * Vector3.Distance(R(worldPos), cam.Position);   // ~constant screen width
+    foreach (var (a, b, until, wpn, start) in tracers)
+    {
+        var dir = b - a;
+        float len = dir.Length();
+        if (len < 1f) continue;
+        dir /= len;
+        // your own beams leave from the lower-right 'hand' (like the hook rope); other shooters' from just below their eye
+        bool mine = Vector3.DistanceSquared(a, p.Eye) < 4f;
+        var from = mine ? a + PlayerMove.RightFlat(p.Yaw) * 9f + new Vector3(0, -9f, 0) + dir * 14f : a + dir * 10f + new Vector3(0, -6f, 0);
+        if (wpn == (int)WeaponId.LightningGun)
+        {
+            // jagged bolt: re-rolled every frame so it crackles
+            var side = Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY) + new Vector3(0, 0.001f, 0));
+            var upv = Vector3.Cross(side, dir);
+            var pts = new List<Vector3> { from };
+            int n = Math.Max(4, (int)(len / 60f));
+            for (int i = 1; i < n; i++)
+            {
+                float t = i / (float)n, amp = 9f * MathF.Sin(t * MathF.PI);
+                pts.Add(from + (b - from) * t + side * ((float)flashRng.NextDouble() * 2 - 1) * amp + upv * ((float)flashRng.NextDouble() * 2 - 1) * amp);
+            }
+            pts.Add(b);
+            for (int i = 0; i + 1 < pts.Count; i++)
+            {
+                Raylib.DrawCylinderEx(R(pts[i]), R(pts[i + 1]), Thick(pts[i], 0.0022f), Thick(pts[i + 1], 0.0022f), 4, new Color(90, 150, 255, 255));   // blue body
+                Raylib.DrawLine3D(R(pts[i]), R(pts[i + 1]), Color.White);                                        // hot core
+            }
+        }
+        else if (wpn == (int)WeaponId.Railgun)
+        {
+            // straight core plus a corkscrew that fades over ~1s
+            float age = (now2 - start) / 0.9f, fade = MathF.Max(0f, 1f - age);
+            var rightv = MathF.Abs(dir.Y) > 0.95f ? Vector3.UnitX : Vector3.Normalize(Vector3.Cross(dir, Vector3.UnitY));
+            var upv = Vector3.Cross(rightv, dir);
+            float spin = (now2 - start) * 9f;
+            var prev = from + (rightv * MathF.Cos(spin) + upv * MathF.Sin(spin)) * 7f;
+            int steps = Math.Min(900, (int)(len / 7f));
+            for (int i = 1; i <= steps; i++)
+            {
+                float d = i * 7f, ang = d * 0.05f + spin;
+                var cur = from + dir * d + (rightv * MathF.Cos(ang) + upv * MathF.Sin(ang)) * (7f * (0.6f + 0.4f * fade));
+                Raylib.DrawCylinderEx(R(prev), R(cur), Thick(prev, 0.0016f), Thick(cur, 0.0016f), 3, Raylib.Fade(new Color(90, 190, 255, 255), fade));
+                prev = cur;
+            }
+            Raylib.DrawCylinderEx(R(from), R(b), Thick(from, 0.0026f) * (0.6f + 0.4f * fade), Thick(b, 0.0026f) * (0.6f + 0.4f * fade), 4, Raylib.Fade(new Color(240, 252, 255, 255), fade));
+        }
+        else Raylib.DrawLine3D(R(from), R(b), Color.Yellow);
+    }
     Raylib.EndMode3D();
 
     foreach (var b in game.Bots)
@@ -444,7 +509,7 @@ while (!quit && !Raylib.WindowShouldClose())
     var w = WeaponDef.Get(p.Current);
     float speed = MathF.Sqrt(p.Move.Velocity.X * p.Move.Velocity.X + p.Move.Velocity.Z * p.Move.Velocity.Z);
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
-    Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
+    Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  cells {p.Cells}  slugs {p.Slugs}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
     Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.Grapple)} hook  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
     if (!p.Alive)
@@ -454,7 +519,7 @@ while (!quit && !Raylib.WindowShouldClose())
     }
 
     // weapon bar: owned guns bright, current one boxed
-    string[] short_ = { "Axe", "SG", "SSG", "NG", "SNG", "GL", "RL" };
+    string[] short_ = { "Axe", "SG", "SSG", "NG", "SNG", "GL", "RL", "LG", "RG" };
     for (int i = 0; i < short_.Length; i++)
     {
         int x = 16 + i * 74, y = 640;

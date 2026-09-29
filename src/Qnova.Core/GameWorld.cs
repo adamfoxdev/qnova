@@ -106,11 +106,11 @@ public sealed class GameWorld
         ReleaseHook(p);
         p.Move.Position = at; p.Move.Velocity = default; p.Move.OnGround = false;
         p.Health = p.MaxHealth; p.RespawnAt = 0;
-        if (p.IsBot) { p.Shells = 50; p.Nails = 200; p.Rockets = 25; }
+        if (p.IsBot) { p.Shells = 50; p.Nails = 200; p.Rockets = 25; p.Cells = 200; p.Slugs = 20; }
         else
         {
             // Humans lose their guns on death and start over with the axe and shotgun.
-            p.Shells = 25; p.Nails = 100; p.Rockets = 10;
+            p.Shells = 25; p.Nails = 100; p.Rockets = 10; p.Cells = 50; p.Slugs = 5;
             p.Owned = new HashSet<WeaponId> { WeaponId.Axe, WeaponId.Shotgun };
             p.Current = WeaponId.Shotgun;
         }
@@ -244,6 +244,8 @@ public sealed class GameWorld
             case PickupKind.Shells: return c.AddAmmo(AmmoType.Shells, k.Amount) > 0;
             case PickupKind.Nails: return c.AddAmmo(AmmoType.Nails, k.Amount) > 0;
             case PickupKind.Rockets: return c.AddAmmo(AmmoType.Rockets, k.Amount) > 0;
+            case PickupKind.Cells: return c.AddAmmo(AmmoType.Cells, k.Amount) > 0;
+            case PickupKind.Slugs: return c.AddAmmo(AmmoType.Slugs, k.Amount) > 0;
             default:
                 var (type, amt) = Pickup.WeaponAmmo(k.Weapon);
                 bool isNew = c.Owned.Add(k.Weapon);
@@ -289,6 +291,12 @@ public sealed class GameWorld
                     Hitscan(p, def.Id, p.Eye, d, def.Range, def.Damage, true);
                 }
                 break;
+            case FireMode.Beam:
+                Hitscan(p, def.Id, p.Eye, dir, def.Range, def.Damage, true);   // continuous lightning: many small hits
+                break;
+            case FireMode.Rail:
+                RailShot(p, def, dir);
+                break;
             case FireMode.Nail:
                 Projectiles.Add(new Projectile { Kind = ProjectileKind.Nail, Weapon = def.Id, Owner = p, Pos = p.Eye, Vel = dir * def.ProjectileSpeed, Damage = def.Damage, Expires = Time + 6 });
                 break;
@@ -306,6 +314,31 @@ public sealed class GameWorld
     float Crandom() => (float)(Rng.NextDouble() * 2 - 1);
 
     static Aabb Box(Player p) => Aabb.FromCenter(p.Move.Position, MoveVars.Half);
+
+    /// <summary>Q3 railgun: an instant beam that passes through every player and dummy in its path (until a wall) for full damage.</summary>
+    void RailShot(Player shooter, WeaponDef def, Vector3 dir)
+    {
+        var origin = shooter.Eye;
+        var wall = Map.TraceRay(origin, origin + dir * def.Range);
+        float reach = wall.Fraction * def.Range;
+        var hits = new List<(float Dist, object Who)>();
+        foreach (var t in Targets)
+            if (t.Alive && World.RayVsBox(origin, dir * def.Range, t.Bounds.Min, t.Bounds.Max, out float f, out _) && f * def.Range <= reach)
+                hits.Add((f, t));
+        foreach (var o in Combatants)
+            if (o != shooter && o.Alive)
+            {
+                var b = Box(o);
+                if (World.RayVsBox(origin, dir * def.Range, b.Min, b.Max, out float f, out _) && f * def.Range <= reach) hits.Add((f, o));
+            }
+        Events.Add(new GameEvent(EventKind.Tracer, origin, origin + dir * reach, (int)def.Id));
+        if (wall.Hit) Events.Add(new GameEvent(EventKind.Impact, origin + dir * reach, wall.Normal));
+        foreach (var (_, who) in hits.OrderBy(h => h.Dist))
+        {
+            if (who is Target t) Damage(t, def.Damage, dir, shooter);
+            else if (who is Player pl) DamagePlayer(pl, def.Damage, dir, shooter, knock: false, def.Id);
+        }
+    }
 
     void Hitscan(Player shooter, WeaponId weapon, Vector3 origin, Vector3 dir, float range, int damage, bool tracer)
     {
@@ -326,7 +359,7 @@ public sealed class GameWorld
             { best = f * range; victim = o; }
         }
         var hit = origin + dir * best;
-        if (tracer) Events.Add(new GameEvent(EventKind.Tracer, origin, hit));
+        if (tracer) Events.Add(new GameEvent(EventKind.Tracer, origin, hit, (int)weapon));
         if (victim is Target t2) Damage(t2, damage, dir, shooter);
         else if (victim is Player p2) DamagePlayer(p2, damage, dir, shooter, knock: false, weapon);
         else if (wall.Hit) Events.Add(new GameEvent(EventKind.Impact, hit, wall.Normal));

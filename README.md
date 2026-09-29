@@ -14,7 +14,7 @@ dotnet test
 dotnet run --project src/Qnova.Game
 ```
 
-Controls: WASD, Space (jump, release between hops), mouse look, LMB fire, 1-7 or wheel to change weapon, M mute, R reset, ` (~) opens the console.
+Controls: WASD, Space (jump, release between hops), mouse look, LMB fire, 1-9 or wheel to change weapon, M mute, R reset, ` (~) opens the console.
 
 Weapons (Q1 stats): Axe, Shotgun (6x4), Double Shotgun (14x4), Nailgun (9), Super Nailgun (18),
 Grenade Launcher (bouncing, 2.5s fuse), Rocket Launcher (100-120 direct, 120 splash, self-damage halved,
@@ -108,3 +108,14 @@ Dev flags: `--no-config` (ignore the saved file), `--keybinds [--capture]` (open
 - **Launchpads** (Quake 3 style): glowing cyan plates. Step on one and you're flung along a ballistic arc whose *apex* is the pad's target
   point (same formula as Q3's `trigger_push`), so it adapts to `sv_gravity`. The arena has four: up to the east ledge, over the stairs onto the
   mesa, a long hop from the north wall onto the mesa, and back off the ledge. Bots get launched too.
+
+## The holy trifecta: Rocket Launcher, Lightning Gun, Railgun
+
+- **Lightning Gun** (slot 8, `weapon lg`): a continuous beam, Quake 3 numbers: 8 damage every 50 ms (~160 dps), 768 range, one **cell** per
+  shot. Hits the first target only. Drawn as a crackling blue bolt.
+- **Railgun** (slot 9, `weapon rail`): instant 100 damage, **pierces every player and dummy in line** (stopped only by walls), 1.5 s refire,
+  one **slug** per shot, lingering blue corkscrew trail. One shot kills a full-health player.
+- New ammo: cells (max 200) and slugs (max 50), with ammo boxes and gun pickups: the Lightning Gun is in the last bunker, the Railgun at the far
+  end of the east ledge. You spawn with 50 cells and 5 slugs. Bots use both (lightning at mid range, rockets further out, the rail at long range
+  once they are skilled enough) and now only chase items on their own level.
+- Cheats: `give cells|slugs [n]`, `giveall` / `impulse 9` include everything.
