@@ -173,3 +173,47 @@ public class ShippedMapTests
         Assert.Contains("\"redFlag\":[0,40,-1850]", html);
     }
 }
+
+public class BigSampleMapTests
+{
+    static string Maps() => Path.Combine(new DirectoryInfo(AppContext.BaseDirectory).Parent!.Parent!.Parent!.Parent!.Parent!.FullName, "maps");
+
+    static GameWorld Load(string file)
+    {
+        var w = new World();
+        w.Add(new Aabb(new(-64, -64, -64), new(64, 0, 64)));
+        var g = new GameWorld(w, new System.Numerics.Vector3(0, 28, 0));
+        g.BotAi = false;
+        g.LoadMap(MapJson.Load(Path.Combine(Maps(), file)));
+        return g;
+    }
+
+    [Fact]
+    public void Skyspire_is_tall_and_every_pad_carries_a_player_up_onto_a_higher_slab()
+    {
+        var g = Load("skyspire.json");
+        Assert.True(g.CeilingY >= 3000);
+        Assert.Equal(6, g.JumpPads.Count);
+        foreach (var pad in g.JumpPads)
+        {
+            g.Player.Move.Position = new(pad.Center.X, pad.Trigger.Min.Y + 28f, pad.Center.Z);
+            g.Player.Move.Velocity = default;
+            g.Player.PadCooldownUntil = 0;
+            float startY = g.Player.Move.Position.Y;
+            for (int i = 0; i < 72 * 6; i++) g.Tick(default, false);
+            Assert.True(g.Player.Move.OnGround, $"pad at {pad.Center} never landed");
+            Assert.True(g.Player.Move.Position.Y > startY + 200f, $"pad at {pad.Center} landed at y {g.Player.Move.Position.Y}");
+        }
+    }
+
+    [Fact]
+    public void Big_yard_is_huge_and_bots_can_run_ctf_on_it()
+    {
+        var g = Load("big_yard.json");
+        Assert.True(g.MapHalf >= 6000);
+        g.SetMode(GameMode.Ctf);
+        Assert.Equal(new System.Numerics.Vector3(-5200, 40, 200), g.FlagOf(Team.Red)!.Home);
+        for (int i = 0; i < 72 * 10; i++) g.Tick(default, false);      // just make sure a big map simulates
+        Assert.All(g.Combatants, c => Assert.True(c.Alive));
+    }
+}
