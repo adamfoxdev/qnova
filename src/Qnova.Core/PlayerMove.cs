@@ -28,6 +28,20 @@ public static class MoveVars
     public const float EyeHeight = 22f;       // above box center
 }
 
+/// <summary>Live-tunable copy of the movement constants; the console's sv_* cvars write into this.</summary>
+public sealed class MoveSettings
+{
+    public float Gravity = MoveVars.Gravity;
+    public float MaxSpeed = MoveVars.MaxSpeed;
+    public float StopSpeed = MoveVars.StopSpeed;
+    public float Accelerate = MoveVars.Accelerate;
+    public float AirAccelerate = MoveVars.AirAccelerate;
+    public float AirWishCap = MoveVars.AirWishCap;
+    public float Friction = MoveVars.Friction;
+    public float JumpSpeed = MoveVars.JumpSpeed;
+    public float StepHeight = MoveVars.StepHeight;
+}
+
 /// <summary>Quake-style player physics: ground friction, accelerate, air-strafe, slide-move, step-up.</summary>
 public sealed class PlayerMove
 {
@@ -37,8 +51,11 @@ public sealed class PlayerMove
     public bool AutoHop;        // false = must release jump between jumps (classic Quake)
     bool _jumpHeld;
 
+    public bool NoClip;         // fly through geometry (cheat)
+
     readonly World _world;
-    public PlayerMove(World world) => _world = world;
+    readonly MoveSettings _s;
+    public PlayerMove(World world, MoveSettings? settings = null) { _world = world; _s = settings ?? new MoveSettings(); }
 
     public static Vector3 ForwardFlat(float yawDeg)
     {
@@ -60,12 +77,13 @@ public sealed class PlayerMove
 
     public void Tick(in UserCmd cmd, float dt)
     {
+        if (NoClip) { NoClipMove(cmd, dt); return; }
         CheckGround();
 
         // Jump (Q1: no auto-repeat while the key stays down).
         if (cmd.Jump && (AutoHop || !_jumpHeld) && OnGround)
         {
-            Velocity.Y = MoveVars.JumpSpeed;
+            Velocity.Y = _s.JumpSpeed;
             OnGround = false;
         }
         _jumpHeld = cmd.Jump;
@@ -74,30 +92,41 @@ public sealed class PlayerMove
                     + RightFlat(cmd.Yaw) * (cmd.Side * MoveVars.MoveScale);
         float wishspeed = wishvel.Length();
         var wishdir = wishspeed > 1e-4f ? wishvel / wishspeed : Vector3.Zero;
-        if (wishspeed > MoveVars.MaxSpeed) wishspeed = MoveVars.MaxSpeed;
+        if (wishspeed > _s.MaxSpeed) wishspeed = _s.MaxSpeed;
 
         if (OnGround)
         {
             ApplyFriction(dt);
-            Accelerate(wishdir, wishspeed, MoveVars.Accelerate, dt);
+            Accelerate(wishdir, wishspeed, _s.Accelerate, dt);
             Velocity.Y = 0;
             if (Velocity.X != 0 || Velocity.Z != 0) WalkMove(dt);
         }
         else
         {
             AirAccelerate(wishdir, wishspeed, dt);
-            Velocity.Y -= MoveVars.Gravity * dt;
+            Velocity.Y -= _s.Gravity * dt;
             FlyMove(dt, out _);
         }
         CheckGround();
+    }
+
+    void NoClipMove(in UserCmd cmd, float dt)
+    {
+        // Fly along the view direction; Space rises. No collision, no gravity.
+        var look = LookDir(cmd.Yaw, cmd.Pitch);
+        var wish = look * cmd.Forward + RightFlat(cmd.Yaw) * cmd.Side + (cmd.Jump ? Vector3.UnitY : Vector3.Zero);
+        if (wish.LengthSquared() > 1f) wish = Vector3.Normalize(wish);
+        Velocity = wish * (_s.MaxSpeed * 1.5f);
+        Position += Velocity * dt;
+        OnGround = false;
     }
 
     void ApplyFriction(float dt)
     {
         float speed = MathF.Sqrt(Velocity.X * Velocity.X + Velocity.Z * Velocity.Z);
         if (speed < 0.1f) { Velocity.X = 0; Velocity.Z = 0; return; }
-        float control = speed < MoveVars.StopSpeed ? MoveVars.StopSpeed : speed;
-        float newSpeed = MathF.Max(0f, speed - control * MoveVars.Friction * dt);
+        float control = speed < _s.StopSpeed ? _s.StopSpeed : speed;
+        float newSpeed = MathF.Max(0f, speed - control * _s.Friction * dt);
         float k = newSpeed / speed;
         Velocity.X *= k; Velocity.Z *= k;
     }
@@ -115,11 +144,11 @@ public sealed class PlayerMove
     /// so strafing at an angle to your velocity keeps adding speed (strafe-jumping).</summary>
     void AirAccelerate(Vector3 wishdir, float wishspeed, float dt)
     {
-        float wishspd = MathF.Min(wishspeed, MoveVars.AirWishCap);
+        float wishspd = MathF.Min(wishspeed, _s.AirWishCap);
         float current = Vector3.Dot(Velocity, wishdir);
         float add = wishspd - current;
         if (add <= 0) return;
-        float a = MathF.Min(MoveVars.AirAccelerate * wishspeed * dt, add);
+        float a = MathF.Min(_s.AirAccelerate * wishspeed * dt, add);
         Velocity += wishdir * a;
     }
 
@@ -141,10 +170,10 @@ public sealed class PlayerMove
         // Blocked: try stepping up, moving, and dropping back down.
         var flatPos = Position; var flatVel = Velocity;
         Position = start; Velocity = startVel;
-        var up = _world.TraceBox(Position, Position + new Vector3(0, MoveVars.StepHeight, 0), MoveVars.Half);
+        var up = _world.TraceBox(Position, Position + new Vector3(0, _s.StepHeight, 0), MoveVars.Half);
         Position = up.EndPos;
         FlyMove(dt, out _);
-        var down = _world.TraceBox(Position, Position - new Vector3(0, MoveVars.StepHeight + 0.1f, 0), MoveVars.Half);
+        var down = _world.TraceBox(Position, Position - new Vector3(0, _s.StepHeight + 0.1f, 0), MoveVars.Half);
         if (down.Hit && down.Normal.Y < 0.7f) { Position = flatPos; Velocity = flatVel; return; }
         Position = down.EndPos;
 

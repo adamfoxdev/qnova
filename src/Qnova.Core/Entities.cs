@@ -12,8 +12,9 @@ public sealed class Player
     public WeaponId Current = WeaponId.Shotgun;
     public float NextFire;
     public int Frags;
+    public bool God;
 
-    public Player(World w, Vector3 spawn) { Move = new PlayerMove(w) { Position = spawn }; }
+    public Player(World w, Vector3 spawn, MoveSettings? settings = null) { Move = new PlayerMove(w, settings) { Position = spawn }; }
 
     public Vector3 Eye => Move.Position + new Vector3(0, MoveVars.EyeHeight, 0);
     public Vector3 Look => PlayerMove.LookDir(Yaw, Pitch);

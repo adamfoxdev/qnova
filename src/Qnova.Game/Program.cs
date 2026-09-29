@@ -8,6 +8,7 @@ static Vector3 R(Vector3 v) => v * S;
 Raylib.SetConfigFlags(ConfigFlags.VSyncHint | ConfigFlags.Msaa4xHint);
 Raylib.InitWindow(1280, 720, "qnova");
 Raylib.InitAudioDevice();
+Raylib.SetExitKey(KeyboardKey.Null);   // Esc closes the console (or quits when it's closed)
 Raylib.DisableCursor();
 
 // Sound effects are synthesized by Qnova.Core; each id gets a small pool so rapid fire can overlap.
@@ -38,11 +39,23 @@ void Play(SoundId id, Vector3 at, Vector3 listener, float volume = 1f)
 }
 
 var game = Arena.Build();
-var spawn = game.Player.Move.Position;
+var ui = new ConsoleUi(game.Console);
+bool quit = false;
+
+// client-side variables and commands
+float sens = 0.10f, fov = 90f, timescale = 1f;
+game.Console.AddCvar("sensitivity", sens, "Mouse sensitivity (degrees per pixel)", v => sens = Math.Max(0f, v));
+game.Console.AddCvar("fov", fov, "Vertical field of view in degrees", v => fov = Math.Clamp(v, 30f, 140f));
+game.Console.AddCvar("volume", 1f, "Master volume 0-1", v => { if (audioOk) Raylib.SetMasterVolume(Math.Clamp(v, 0f, 1f)); });
+game.Console.AddCvar("host_timescale", 1f, "Game speed multiplier (slow-mo / fast-forward)", v => timescale = Math.Clamp(v, 0.05f, 8f), cheat: true);
+game.Console.AddCommand("quit", "quit", "Exit the game", _ => quit = true);
+game.Console.AddCommand("mute", "mute", "Toggle sound", _ => { muted = !muted; game.Console.Print(muted ? "sound off" : "sound on"); });
+game.Console.AddCommand("clear", "clear", "Clear the console", _ => game.Console.Lines.Clear());
+game.Console.Print("qnova console - type 'help' or 'cvarlist'. Cheats: 'sv_cheats 1'.");
+
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
 var tracers = new List<(Vector3 A, Vector3 B, float Until)>();
 float yaw = -90, pitch = 0, acc = 0;
-const float sens = 0.10f;
 bool fireHeld = false;
 
 var keys = new (KeyboardKey Key, WeaponId Id)[]
@@ -52,38 +65,38 @@ var keys = new (KeyboardKey Key, WeaponId Id)[]
     (KeyboardKey.Six, WeaponId.GrenadeLauncher), (KeyboardKey.Seven, WeaponId.RocketLauncher),
 };
 
-while (!Raylib.WindowShouldClose())
+while (!quit && !Raylib.WindowShouldClose())
 {
-    var md = Raylib.GetMouseDelta();
+    if (Raylib.IsKeyPressed(KeyboardKey.Grave)) ui.Toggle();
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape)) { if (ui.Open) ui.Close(); else quit = true; }
+    if (ui.Open) ui.Update();
+    bool paused = ui.Open;   // game input and simulation freeze while the console is down
+
+    var md = paused ? default : Raylib.GetMouseDelta();
     yaw -= md.X * sens;
     pitch = Math.Clamp(pitch - md.Y * sens, -89f, 89f);
-    fireHeld = Raylib.IsMouseButtonDown(MouseButton.Left);
+    fireHeld = !paused && Raylib.IsMouseButtonDown(MouseButton.Left);
     WeaponId? sel = null;
-    foreach (var (k, id) in keys) if (Raylib.IsKeyPressed(k)) sel = id;
-    var wheel = Raylib.GetMouseWheelMove();
+    if (!paused) foreach (var (k, id) in keys) if (Raylib.IsKeyPressed(k)) sel = id;
+    var wheel = paused ? 0 : Raylib.GetMouseWheelMove();
     if (wheel != 0)
     {
         int n = WeaponDef.All.Length, cur = (int)game.Player.Current;
         sel = (WeaponId)((cur + (wheel > 0 ? 1 : n - 1)) % n);
     }
-    if (Raylib.IsKeyPressed(KeyboardKey.M)) muted = !muted;
-    if (Raylib.IsKeyPressed(KeyboardKey.R))
+    if (!paused && Raylib.IsKeyPressed(KeyboardKey.M)) game.Console.Execute("mute", echo: false);
+    if (!paused && Raylib.IsKeyPressed(KeyboardKey.R)) game.Respawn();
+
+    var cmd = new UserCmd { Yaw = yaw, Pitch = pitch };
+    if (!paused)
     {
-        game.Player.Move.Position = spawn; game.Player.Move.Velocity = default;
-        game.Player.Health = 100; game.Player.Shells = 25; game.Player.Nails = 100; game.Player.Rockets = 10;
+        cmd.Forward = (Raylib.IsKeyDown(KeyboardKey.W) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.S) ? 1 : 0);
+        cmd.Side = (Raylib.IsKeyDown(KeyboardKey.D) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.A) ? 1 : 0);
+        cmd.Jump = Raylib.IsKeyDown(KeyboardKey.Space);
     }
 
-    var cmd = new UserCmd
-    {
-        Forward = (Raylib.IsKeyDown(KeyboardKey.W) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.S) ? 1 : 0),
-        Side = (Raylib.IsKeyDown(KeyboardKey.D) ? 1 : 0) - (Raylib.IsKeyDown(KeyboardKey.A) ? 1 : 0),
-        Jump = Raylib.IsKeyDown(KeyboardKey.Space),
-        Yaw = yaw, Pitch = pitch,
-    };
-    game.Player.Move.AutoHop = false;
-
-    acc += Math.Min(Raylib.GetFrameTime(), 0.1f);
-    while (acc >= GameWorld.Dt)
+    if (!paused) acc += Math.Min(Raylib.GetFrameTime(), 0.1f) * timescale;
+    while (!paused && acc >= GameWorld.Dt)
     {
         acc -= GameWorld.Dt;
         game.Tick(cmd, fireHeld, sel); sel = null;
@@ -116,7 +129,7 @@ while (!Raylib.WindowShouldClose())
     var p = game.Player;
     var cam = new Camera3D
     {
-        Position = R(p.Eye), Target = R(p.Eye + p.Look), Up = Vector3.UnitY, FovY = 90, Projection = CameraProjection.Perspective,
+        Position = R(p.Eye), Target = R(p.Eye + p.Look), Up = Vector3.UnitY, FovY = fov, Projection = CameraProjection.Perspective,
     };
     float now2 = (float)Raylib.GetTime();
     effects.RemoveAll(e => e.Until < now2); tracers.RemoveAll(t => t.Until < now2);
@@ -144,8 +157,9 @@ while (!Raylib.WindowShouldClose())
     Raylib.DrawLine(640 - 8, 360, 640 + 8, 360, Color.White); Raylib.DrawLine(640, 352, 640, 368, Color.White);
     Raylib.DrawText($"HP {p.Health}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
-    Raylib.DrawText("WASD move  SPACE jump  MOUSE look  LMB fire  1-7/wheel weapon  M mute  R reset", 16, 44, 16, Color.Gray);
+    Raylib.DrawText("WASD move  SPACE jump  MOUSE look  LMB fire  1-7/wheel weapon  M mute  R reset  ~ console", 16, 44, 16, Color.Gray);
     if (!p.Alive) Raylib.DrawText("YOU DIED - press R", 500, 340, 30, Color.Red);
+    if (ui.Open) ui.Draw(Raylib.GetScreenWidth(), Raylib.GetScreenHeight());
     Raylib.EndDrawing();
 }
 foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
