@@ -11,7 +11,11 @@ public sealed class GameWorld
     static readonly Vector3 GrenadeHalf = new(2, 2, 2);
 
     public readonly World Map;
+    public readonly MoveSettings Settings = new();
     public readonly Player Player;
+    public readonly GameConsole Console = new();
+    public readonly Vector3 SpawnPoint;
+    public bool InfiniteAmmo;
     public readonly List<Target> Targets = new();
     public readonly List<Projectile> Projectiles = new();
     public readonly List<GameEvent> Events = new();
@@ -21,8 +25,10 @@ public sealed class GameWorld
     public GameWorld(World map, Vector3 spawn, int seed = 1)
     {
         Map = map;
-        Player = new Player(map, spawn);
+        SpawnPoint = spawn;
+        Player = new Player(map, spawn, Settings);
         _rng = new Random(seed);
+        GameCommands.Install(this);
     }
 
     public void Tick(UserCmd cmd, bool fire, WeaponId? select = null)
@@ -54,7 +60,7 @@ public sealed class GameWorld
             Events.Add(new GameEvent(EventKind.DryFire, p.Eye, Arg: (int)def.Id));
             return;
         }
-        p.Spend(def.Ammo, def.AmmoPerShot);
+        if (!InfiniteAmmo) p.Spend(def.Ammo, def.AmmoPerShot);
         p.NextFire = Time + def.Refire;
         Events.Add(new GameEvent(EventKind.Shot, p.Eye, Arg: (int)def.Id));
 
@@ -117,7 +123,7 @@ public sealed class GameWorld
         for (int i = Projectiles.Count - 1; i >= 0; i--)
         {
             var pr = Projectiles[i];
-            if (pr.Kind == ProjectileKind.Grenade) pr.Vel.Y -= MoveVars.Gravity * Dt;
+            if (pr.Kind == ProjectileKind.Grenade) pr.Vel.Y -= Settings.Gravity * Dt;
 
             var end = pr.Pos + pr.Vel * Dt;
             var half = pr.Kind == ProjectileKind.Grenade ? GrenadeHalf : NailHalf;
@@ -202,7 +208,7 @@ public sealed class GameWorld
                 pts *= 0.5f;
                 Knock(ref p.Move.Velocity, p.Move.Position - at, pts);
                 if (p.Move.Velocity.Y > 0) p.Move.OnGround = false;
-                p.Health -= (int)pts;
+                if (!p.God) p.Health -= (int)pts;
                 Events.Add(new GameEvent(EventKind.Hurt, at));
             }
         }
@@ -235,5 +241,18 @@ public sealed class GameWorld
             t.RespawnAt = Time + 3f;
             Events.Add(new GameEvent(EventKind.Kill, t.Origin));
         }
+    }
+}
+
+public static class GameWorldExtensions
+{
+    /// <summary>Full restore: position, health, ammo, and target dummies.</summary>
+    public static void Respawn(this GameWorld g)
+    {
+        var p = g.Player;
+        p.Move.Position = g.SpawnPoint; p.Move.Velocity = default; p.Move.OnGround = false;
+        p.Health = p.MaxHealth; p.Shells = 25; p.Nails = 100; p.Rockets = 10;
+        g.Projectiles.Clear();
+        foreach (var t in g.Targets) { t.Health = 100; t.Velocity = default; }
     }
 }
