@@ -54,6 +54,7 @@ bool quit = false;
 var popups = new DamagePopups();
 var flashUntil = new Dictionary<int, float>();   // victim id -> hit-flash end time (bots 1.., dummies 1000+)
 const float FlashTime = 0.16f;
+game.MapLoaded += () => { popups.Clear(); flashUntil.Clear(); };   // nothing tied to the old map should linger
 float sens = 0.10f, fov = 90f, timescale = 1f;
 bool plainBlocks = false, damageNumbers = true, hitFlashOn = true;
 float zoomFov = 30f, zoomT = 0f;   // zoomT: 0 = normal view, 1 = fully zoomed (eases in and out)
@@ -151,10 +152,10 @@ if (!args.Contains("--no-config"))
 
 if (devStart) { started = true; inMenu = false; Raylib.DisableCursor(); }
 if (args.Contains("--paused")) started = true;               // show the pause variant of the menu
-if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
+if (args.Contains("--options")) { menu.SetSelected(3); menu.Select(); menu.SetSelected(4); }
 if (args.Contains("--keybinds"))                       // open Options > Key Bindings (add --capture to wait for a key on JUMP)
 {
-    menu.SetSelected(1); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
+    menu.SetSelected(3); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
     if (args.Contains("--capture")) menu.Select();
 }
 if (devPos != null)
@@ -165,6 +166,13 @@ if (devPos != null)
 if (DevF("--yaw") is float dy) yaw = dy;
 if (DevF("--pitch") is float dp) pitch = dp;
 if (devExec != null) game.Console.Execute(devExec, echo: false);
+// --map arena | random | random:<seed>   (load a specific map at startup)
+if (Arg("--map") is { } mapArg)
+{
+    if (mapArg.StartsWith("random", StringComparison.OrdinalIgnoreCase))
+        game.LoadRandomMap(mapArg.Contains(':') && int.TryParse(mapArg[(mapArg.IndexOf(':') + 1)..], out var mseed) ? mseed : 0);
+    else game.LoadClassicArena();
+}
 if (devConsole) ui.Toggle();
 
 while (!quit && !Raylib.WindowShouldClose())
@@ -393,7 +401,7 @@ while (!quit && !Raylib.WindowShouldClose())
     mapRenderer.Begin();
     foreach (var sol in game.Map.Solids)
     {
-        var mat = SurfaceRules.For(sol, Arena.Height);
+        var mat = SurfaceRules.For(sol, game.CeilingY);
         MapRenderer.Box(sol, mat, MapRenderer.Palette(mat, sol));
     }
     foreach (var dc in game.Decor)
@@ -548,6 +556,7 @@ while (!quit && !Raylib.WindowShouldClose())
     }
     Raylib.DrawText($"HP {Math.Max(0, p.Health)}   {w.Name}   shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  cells {p.Cells}  slugs {p.Slugs}   frags {p.Frags}", 16, 680, 22, Color.White);
     Raylib.DrawText($"speed {speed:0}  {(p.Move.OnGround ? "ground" : "air")}", 16, 16, 22, Color.White);
+    Raylib.DrawText(game.MapName, Raylib.GetScreenWidth() - 16 - Raylib.MeasureText(game.MapName, 16), Raylib.GetScreenHeight() - 26, 16, new Color(150, 150, 150, 255));
     Raylib.DrawText($"{KeyName(InputAction.Forward)}/{KeyName(InputAction.MoveLeft)}/{KeyName(InputAction.Back)}/{KeyName(InputAction.MoveRight)} move  {KeyName(InputAction.Jump)} jump  MOUSE look  {KeyName(InputAction.Fire)} fire  {KeyName(InputAction.Zoom)} zoom  {KeyName(InputAction.Grapple)} hook  {KeyName(InputAction.PrevWeapon)}/{KeyName(InputAction.NextWeapon)} weapon  {KeyName(InputAction.Mute)} mute  {KeyName(InputAction.Respawn)} reset  ~ console  ESC menu", 16, 44, 16, Color.Gray);
     if (!p.Alive)
     {

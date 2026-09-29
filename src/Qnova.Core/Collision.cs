@@ -28,6 +28,9 @@ public sealed class World
     readonly List<Aabb> _solids = new();
     public IReadOnlyList<Aabb> Solids => _solids;
 
+    /// <summary>Remove every solid. Used when a new map is loaded into the same world so existing players keep their reference.</summary>
+    public void Clear() => _solids.Clear();
+
     public void Add(Aabb box) => _solids.Add(box);
     public void Add(Vector3 min, Vector3 max) => _solids.Add(new Aabb(min, max));
 

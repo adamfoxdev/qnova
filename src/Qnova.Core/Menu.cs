@@ -178,6 +178,9 @@ public sealed class MenuModel
         keys.Items.Add(new MenuItem { Label = () => "BACK", OnSelect = () => m.Back() });
 
         root.Items.Add(new MenuItem { Label = () => hasStarted() ? "RESUME GAME" : "START GAME", OnSelect = start });
+        // Fresh maps: a new random seed each time (console: "map random <seed>" replays one), or back to the hand-built arena.
+        root.Items.Add(new MenuItem { Label = () => "RANDOM MAP", OnSelect = () => { g.LoadRandomMap(); start(); } });
+        root.Items.Add(new MenuItem { Label = () => "CLASSIC ARENA", OnSelect = () => { g.LoadClassicArena(); start(); } });
         root.Items.Add(new MenuItem { Label = () => "OPTIONS", OnSelect = () => m.Push(options) });
         root.Items.Add(new MenuItem { Label = () => "QUIT", OnSelect = quit });
         return m;

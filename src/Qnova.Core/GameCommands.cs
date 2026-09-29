@@ -172,6 +172,19 @@ public static class GameCommands
             foreach (var act in KeyBindings.All) c.Print($"{KeyBindings.Name(act),-11} {KeyBindings.Display(kb.Get(act))}");
         });
 
+        c.AddCommand("map", "map [arena|random [seed]]", "Show the current map, load the classic arena, or generate a random one (same seed = same map)", a =>
+        {
+            if (a.Length == 0) { c.Print($"current map: {g.MapName}" + (g.MapSeed > 0 ? $" (seed {g.MapSeed})" : "")); return; }
+            if (a[0].Equals("arena", StringComparison.OrdinalIgnoreCase)) { g.LoadClassicArena(); return; }
+            if (a[0].Equals("random", StringComparison.OrdinalIgnoreCase))
+            {
+                int seed = 0;
+                if (a.Length > 1 && !int.TryParse(a[1], out seed)) { c.Print($"\"{a[1]}\" is not a seed number"); return; }
+                g.LoadRandomMap(seed);
+                return;
+            }
+            c.Print("usage: map [arena|random [seed]]");
+        });
         c.AddCommand("pickups", "pickups", "List pickups and seconds until each returns", a =>
         {
             foreach (var k in g.Pickups)

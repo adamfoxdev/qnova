@@ -67,8 +67,12 @@ public static class Arena
         AddVisuals(g);
         AddJumpPads(g);
         for (int i = 0; i < bots; i++) g.AddBot();
+        g.SetMapInfo("Classic Arena", 0, Half, Height);
         return g;
     }
+
+    /// <summary>The classic arena as loadable map data (for switching back to it at runtime).</summary>
+    public static MapData Data() => MapData.From(Build(bots: 0), "Classic Arena", 0, Half, Height);
 
     /// <summary>Visual dressing: ceiling girders, trim, pillar collars, glowing fixtures and the lights they cast.</summary>
     static void AddVisuals(GameWorld g)
