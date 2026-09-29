@@ -5,11 +5,17 @@ using Raylib_cs;
 const float S = 1f / 32f;   // Quake units -> render units
 static Vector3 R(Vector3 v) => v * S;
 
+// Developer flags (used to capture screenshots headlessly): --start, --paused, --options, --console, --exec "<console line>", --shot <png> [--shot-after <sec>]
+string? Arg(string name) { int i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+bool devStart = args.Contains("--start"), devConsole = args.Contains("--console");
+string? devExec = Arg("--exec"), shotPath = Arg("--shot");
+long frameCount = 0;
+double shotAfter = double.TryParse(Arg("--shot-after"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sa) ? sa : 2.0;
+
 Raylib.SetConfigFlags(ConfigFlags.VSyncHint | ConfigFlags.Msaa4xHint);
 Raylib.InitWindow(1280, 720, "qnova");
 Raylib.InitAudioDevice();
-Raylib.SetExitKey(KeyboardKey.Null);   // Esc closes the console (or quits when it's closed)
-Raylib.DisableCursor();
+Raylib.SetExitKey(KeyboardKey.Null);   // Esc backs out of menus / closes the console / pauses
 
 // Sound effects are synthesized by Qnova.Core; each id gets a small pool so rapid fire can overlap.
 const int PoolSize = 4;
@@ -53,6 +59,18 @@ game.Console.AddCommand("mute", "mute", "Toggle sound", _ => { muted = !muted; g
 game.Console.AddCommand("clear", "clear", "Clear the console", _ => game.Console.Lines.Clear());
 game.Console.Print("qnova console - type 'help' or 'cvarlist'. Cheats: 'sv_cheats 1'.");
 
+// Splash / main menu. The game world exists behind it but is frozen until you start.
+bool inMenu = true, started = false, skipMouse = false;
+long menuEnteredFrame = -1;   // frame on which Esc paused the game (that same Esc must not also resume it)
+void PlayUi(SoundId id, float volume = 0.8f) => Play(id, Vector3.Zero, Vector3.Zero, volume);
+var splash = new Splash();
+splash.Exploded += first => PlayUi(SoundId.Explosion, first ? 0.9f : 0.3f);
+var menu = MenuModel.Create(game, () => started, () =>
+{
+    started = true; inMenu = false; skipMouse = true;
+    Raylib.DisableCursor();
+}, () => quit = true);
+
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
 var tracers = new List<(Vector3 A, Vector3 B, float Until)>();
 float yaw = -90, pitch = 0, acc = 0;
@@ -68,14 +86,69 @@ var keys = new (KeyboardKey Key, WeaponId Id)[]
     (KeyboardKey.Six, WeaponId.GrenadeLauncher), (KeyboardKey.Seven, WeaponId.RocketLauncher),
 };
 
+if (devStart) { started = true; inMenu = false; Raylib.DisableCursor(); }
+if (args.Contains("--paused")) started = true;               // show the pause variant of the menu
+if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
+if (devExec != null) game.Console.Execute(devExec, echo: false);
+if (devConsole) ui.Toggle();
+
 while (!quit && !Raylib.WindowShouldClose())
 {
+    frameCount++;
+    if (inMenu)
+    {
+        int sw = Raylib.GetScreenWidth(), sh = Raylib.GetScreenHeight();
+        splash.Update(Raylib.GetFrameTime(), sw, sh);
+
+        bool Pressed(KeyboardKey k) => Raylib.IsKeyPressed(k) || Raylib.IsKeyPressedRepeat(k);
+        if (Pressed(KeyboardKey.Down) || Pressed(KeyboardKey.S)) { if (menu.Move(1)) PlayUi(SoundId.MenuMove); }
+        if (Pressed(KeyboardKey.Up) || Pressed(KeyboardKey.W)) { if (menu.Move(-1)) PlayUi(SoundId.MenuMove); }
+        if (Pressed(KeyboardKey.Left) || Pressed(KeyboardKey.A)) { if (menu.Adjust(-1)) PlayUi(SoundId.MenuMove); }
+        if (Pressed(KeyboardKey.Right) || Pressed(KeyboardKey.D)) { if (menu.Adjust(1)) PlayUi(SoundId.MenuMove); }
+        if (Raylib.IsKeyPressed(KeyboardKey.Enter) || Raylib.IsKeyPressed(KeyboardKey.KpEnter) || Raylib.IsKeyPressed(KeyboardKey.Space))
+        { PlayUi(SoundId.MenuSelect); menu.Select(); }
+        if (Raylib.IsKeyPressed(KeyboardKey.Escape) && menuEnteredFrame != frameCount - 1)
+        {
+            if (menu.Back()) PlayUi(SoundId.MenuMove);
+            else if (started) { inMenu = false; skipMouse = true; Raylib.DisableCursor(); }   // Esc at the pause menu resumes
+        }
+
+        // mouse: hover highlights, click activates (left half of a value row decreases, right half increases)
+        var mp = Raylib.GetMousePosition();
+        var rects = splash.ItemRects;
+        bool mouseMoved = Raylib.GetMouseDelta() != Vector2.Zero;
+        for (int i = 0; i < rects.Count; i++)
+        {
+            if (!Raylib.CheckCollisionPointRec(mp, rects[i])) continue;
+            if (mouseMoved && menu.SetSelected(i)) PlayUi(SoundId.MenuMove, 0.5f);
+            if (Raylib.IsMouseButtonPressed(MouseButton.Left) && i == menu.Selected)
+            {
+                var item = menu.SelectedItem;
+                if (item.Value != null && item.Adjustable) menu.Adjust(mp.X < rects[i].X + rects[i].Width / 2f ? -1 : 1);
+                else menu.Select();
+                PlayUi(SoundId.MenuSelect);
+            }
+        }
+
+        Raylib.BeginDrawing();
+        Raylib.ClearBackground(Color.Black);
+        splash.Draw(sw, sh, menu, started);
+        Raylib.EndDrawing();
+        if (shotPath != null && Raylib.GetTime() >= shotAfter) { Raylib.TakeScreenshot(shotPath); Console.WriteLine($"[dev] shot {shotPath}: {frameCount} frames in {Raylib.GetTime():0.0}s"); quit = true; }
+        continue;
+    }
+
     if (Raylib.IsKeyPressed(KeyboardKey.Grave)) ui.Toggle();
-    if (Raylib.IsKeyPressed(KeyboardKey.Escape)) { if (ui.Open) ui.Close(); else quit = true; }
+    if (Raylib.IsKeyPressed(KeyboardKey.Escape))
+    {
+        if (ui.Open) ui.Close();
+        else { inMenu = true; menuEnteredFrame = frameCount; Raylib.EnableCursor(); continue; }   // Esc in game = pause menu
+    }
     if (ui.Open) ui.Update();
     bool paused = ui.Open;   // game input and simulation freeze while the console is down
 
-    var md = paused ? default : Raylib.GetMouseDelta();
+    var md = paused || skipMouse ? default : Raylib.GetMouseDelta();
+    skipMouse = false;
     yaw -= md.X * sens;
     pitch = Math.Clamp(pitch - md.Y * sens, -89f, 89f);
     fireHeld = !paused && Raylib.IsMouseButtonDown(MouseButton.Left);
@@ -251,8 +324,10 @@ while (!quit && !Raylib.WindowShouldClose())
             Raylib.DrawText(feed[i].Text, 16, 90 + i * 22, 20, Raylib.Fade(Color.White, Math.Min(1f, feed[i].Until - now2)));
     if (ui.Open) ui.Draw(Raylib.GetScreenWidth(), Raylib.GetScreenHeight());
     Raylib.EndDrawing();
+    if (shotPath != null && Raylib.GetTime() >= shotAfter) { Raylib.TakeScreenshot(shotPath); Console.WriteLine($"[dev] shot {shotPath}: {frameCount} frames in {Raylib.GetTime():0.0}s"); quit = true; }
 }
 foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
 if (audioOk) Raylib.CloseAudioDevice();
+splash.Unload();
 ui.Unload();
 Raylib.CloseWindow();

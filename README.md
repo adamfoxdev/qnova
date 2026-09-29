@@ -1,5 +1,7 @@
 # qnova
 
+![QNOVA splash screen](docs/splash.png)
+
 A small C# Quake clone focused on Quake 1 movement and weapons.
 
 - `src/Qnova.Core` – headless simulation (no graphics): swept-AABB collision, Quake ground/air movement
@@ -51,3 +53,19 @@ shotgun and lose extra guns when you die. Weapons: double shotgun on the central
 grenade launcher in the bunkers, rocket launcher on the east ledge. A collected item is gone for **30 seconds**
 (`sv_pickup_respawn`), then respawns with a sound. Items you can't use (full health, full ammo) stay put; ammo caps at
 100 shells / 200 nails / 100 rockets. Bots collect items too and head for health when hurt. `pickups` lists what's ready.
+
+## Splash screen and menu
+
+The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furnace burning in the O that detonates every
+few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
+
+- **START GAME / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
+- **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop. Left/Right adjust; Esc goes back.
+- **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
+
+Menu logic lives in `Qnova.Core/Menu.cs` (unit-tested); drawing is in `Qnova.Game/Splash.cs`.
+
+### Developer flags
+
+Handy for headless screenshots (e.g. under `xvfb-run` with `LIBGL_ALWAYS_SOFTWARE=1`): `--start` (skip the menu), `--paused`,
+`--options`, `--console`, `--exec "<console line>"`, `--shot <name.png> --shot-after <seconds>` (saved in the working directory, then exit).
