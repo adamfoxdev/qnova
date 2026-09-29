@@ -84,6 +84,7 @@ var menu = MenuModel.Create(game, () => started, () =>
 }, () => quit = true);
 
 var mapRenderer = new MapRenderer();
+var itemSprites = new ItemSprites();
 var dynLights = new List<(Vector3 Pos, Vector3 Color, float Radius, float Start, float Duration)>();   // explosions and muzzle flashes
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
 var tracers = new List<(Vector3 A, Vector3 B, float Until, int Weapon, float Start)>();
@@ -385,7 +386,8 @@ while (!quit && !Raylib.WindowShouldClose())
     foreach (var k in game.Pickups)
         if (k.Active)
         {
-            var pc = k.Kind switch { PickupKind.Health => new Vector3(0.2f, 0.9f, 0.35f), PickupKind.Shells => new Vector3(0.9f, 0.5f, 0.12f), PickupKind.Nails => new Vector3(0.6f, 0.6f, 0.7f), PickupKind.Rockets => new Vector3(0.9f, 0.2f, 0.15f), _ => new Vector3(1f, 0.85f, 0.2f) };
+            var (gr, gg, gb) = PickupSprites.Glow(PickupSprites.For(k));
+            var pc = new Vector3(gr, gg, gb);
             lightSrcs.Add(new LightSrc(k.Position + new Vector3(0, 20, 0), pc, k.Kind == PickupKind.Weapon ? 260f : 190f));
         }
     foreach (var pr in game.Projectiles)
@@ -436,18 +438,23 @@ while (!quit && !Raylib.WindowShouldClose())
         var floor = k.Position - new Vector3(0, 15f, 0);
         Raylib.DrawCubeV(R(floor), new Vector3(1.1f, 0.06f, 1.1f), k.Active ? new Color(60, 60, 70, 255) : new Color(35, 35, 40, 255));   // pad
         if (!k.Active) continue;
-        var col = k.Kind switch
+        var sid = PickupSprites.For(k);
+        bool wpn = PickupSprites.IsWeapon(sid);
+        var at = R(k.Position + new Vector3(0, (plainBlocks ? 8 : (wpn ? 2.2f : 1.4f) * 16f - 6f) + MathF.Sin(tnow * 2.5f + i) * 4f, 0));
+        if (plainBlocks)
         {
-            PickupKind.Health => new Color(60, 210, 90, 255),
-            PickupKind.Shells => new Color(235, 140, 30, 255),
-            PickupKind.Nails => new Color(180, 180, 195, 255),
-            PickupKind.Rockets => new Color(210, 60, 50, 255),
-            _ => new Color(245, 215, 50, 255),
-        };
-        float sz = k.Kind == PickupKind.Weapon ? 1.0f : 0.7f;
-        var at = R(k.Position + new Vector3(0, 8 + MathF.Sin(tnow * 2.5f + i) * 4f, 0));
-        Raylib.DrawCubeV(at, new Vector3(sz, sz, sz), col);
-        Raylib.DrawCubeWiresV(at, new Vector3(sz, sz, sz), new Color(20, 20, 20, 255));
+            var (pr_, pg_, pb_) = PickupSprites.Glow(sid);
+            var col = new Color((byte)(pr_ * 255), (byte)(pg_ * 255), (byte)(pb_ * 255), (byte)255);
+            float sz = wpn ? 1.0f : 0.7f;
+            Raylib.DrawCubeV(at, new Vector3(sz, sz, sz), col);
+            Raylib.DrawCubeWiresV(at, new Vector3(sz, sz, sz), new Color(20, 20, 20, 255));
+            continue;
+        }
+        var (gr2, gg2, gb2) = PickupSprites.Glow(sid);
+        Raylib.BeginBlendMode(BlendMode.Additive);
+        Raylib.DrawBillboard(cam, itemSprites.Glow, at, wpn ? 3.4f : 2.4f, new Color((byte)(gr2 * 150), (byte)(gg2 * 150), (byte)(gb2 * 150), (byte)255));
+        Raylib.EndBlendMode();
+        Raylib.DrawBillboard(cam, itemSprites.Get(sid), at, wpn ? 2.2f : 1.4f, Color.White);
     }
     foreach (var b in game.Bots)
     {
@@ -604,4 +611,5 @@ popups.Unload();
 mapRenderer.Unload();
 splash.Unload();
 ui.Unload();
+itemSprites.Dispose();
 Raylib.CloseWindow();
