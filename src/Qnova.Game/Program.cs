@@ -153,12 +153,13 @@ if (!args.Contains("--no-config"))
 
 if (devStart) { started = true; inMenu = false; Raylib.DisableCursor(); }
 if (args.Contains("--paused")) started = true;               // show the pause variant of the menu
-if (args.Contains("--options")) { menu.SetSelected(3); menu.Select(); menu.SetSelected(4); }
+if (args.Contains("--options")) { menu.SetSelected(4); menu.Select(); menu.SetSelected(4); }
 if (args.Contains("--keybinds"))                       // open Options > Key Bindings (add --capture to wait for a key on JUMP)
 {
-    menu.SetSelected(3); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
+    menu.SetSelected(4); menu.Select(); menu.SetSelected(9); menu.Select(); menu.SetSelected(4);
     if (args.Contains("--capture")) menu.Select();
 }
+if (args.Contains("--ctf")) game.SetMode(GameMode.Ctf);   // capture the flag on whatever map is loaded
 if (devPos != null)
 {
     var pp = devPos.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
@@ -341,6 +342,10 @@ while (!quit && !Raylib.WindowShouldClose())
                     Play(SoundId.HookHit, e.A, game.Player.Eye, e.Arg == 1 ? 1f : 0.5f);
                     effects.Add((e.A, (float)now + 0.12f, 5, Color.White)); break;
                 case EventKind.JumpPad: Play(SoundId.JumpPad, e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.6f); break;
+                case EventKind.FlagTaken: Play(SoundId.FlagTaken, e.A, game.Player.Eye, 0.9f); break;
+                case EventKind.FlagDropped: Play(SoundId.FlagReturn, e.A, game.Player.Eye, 0.7f); break;
+                case EventKind.FlagReturned: Play(SoundId.FlagReturn, e.A, game.Player.Eye, 0.9f); break;
+                case EventKind.FlagCaptured: Play(SoundId.FlagCapture, e.A, game.Player.Eye, 1f); break;
                 case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
                 case EventKind.Hurt:
                 {
@@ -390,6 +395,8 @@ while (!quit && !Raylib.WindowShouldClose())
             var pc = new Vector3(gr, gg, gb);
             lightSrcs.Add(new LightSrc(k.Position + new Vector3(0, 20, 0), pc, k.Kind == PickupKind.Weapon ? 260f : 190f));
         }
+    foreach (var fl in game.Flags)
+        lightSrcs.Add(new LightSrc(fl.Pos + new Vector3(0, 30, 0), fl.Team == Team.Red ? new Vector3(1.5f, 0.25f, 0.2f) : new Vector3(0.25f, 0.5f, 1.6f), 420f));
     foreach (var pr in game.Projectiles)
         if (pr.Kind != ProjectileKind.Nail) lightSrcs.Add(new LightSrc(pr.Pos, pr.Kind == ProjectileKind.Rocket ? new Vector3(1.6f, 0.8f, 0.3f) : new Vector3(0.4f, 1.0f, 0.3f), 380f));
     dynLights.RemoveAll(d => now2 - d.Start > d.Duration);
@@ -456,11 +463,32 @@ while (!quit && !Raylib.WindowShouldClose())
         Raylib.EndBlendMode();
         Raylib.DrawBillboard(cam, itemSprites.Get(sid), at, wpn ? 2.2f : 1.4f, Color.White);
     }
+    foreach (var fl in game.Flags)
+    {
+        var tc = fl.Team == Team.Red ? new Color(225, 45, 40, 255) : new Color(50, 100, 235, 255);
+        var basePos = fl.Home - new Vector3(0, Flag.Half.Y - 2f, 0);
+        Raylib.DrawCubeV(R(basePos), new Vector3(2.4f, 0.1f, 2.4f), Raylib.Fade(tc, fl.State == FlagState.Home ? 0.9f : 0.35f));   // base plate stays put
+        if (fl.State == FlagState.Dropped && ((int)(tnow * 4f) & 1) == 0) continue;                                            // a dropped flag blinks
+        bool carried = fl.State == FlagState.Carried;
+        var foot = fl.Pos - new Vector3(0, Flag.Half.Y - 2f, 0);
+        var top = foot + new Vector3(0, carried ? 80f : 170f, 0);
+        Raylib.DrawCylinderEx(R(foot), R(top), 0.1f, 0.1f, 6, new Color(200, 200, 205, 255));
+        // banner: a few slabs that ripple in the wind
+        for (int bi = 0; bi < 5; bi++)
+        {
+            float wave = MathF.Sin(tnow * 5f + bi * 0.9f) * 3f * (bi / 4f);
+            var bp2 = top + new Vector3(14f + bi * 14f, -22f + wave * 0.3f, wave);
+            Raylib.DrawCubeV(R(bp2), new Vector3(0.5f, 1.3f - bi * 0.08f, 0.06f), tc);
+        }
+        Raylib.BeginBlendMode(BlendMode.Additive);
+        Raylib.DrawCylinderEx(R(foot), R(foot + new Vector3(0, 400f, 0)), 0.5f, 0.08f, 8, Raylib.Fade(tc, 0.5f));                // beacon beam
+        Raylib.EndBlendMode();
+    }
     foreach (var b in game.Bots)
     {
         var bp = b.Body;
         if (!bp.Alive) continue;
-        var body = new Color(70, 120, 210, 255);
+        var body = bp.Team == Team.Red ? new Color(200, 60, 50, 255) : new Color(70, 120, 210, 255);
         float bf = FlashAmount(bp.Id, now2);
         mapRenderer.Begin();
         if (bf > 0) MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Emissive, Mix(Dim(body, 0.55f), new Color(235, 235, 235, 255), bf));
@@ -583,11 +611,37 @@ while (!quit && !Raylib.WindowShouldClose())
         Raylib.DrawText($"{kn} {short_[i]}", x, y, 20, owned ? (cur ? Color.Yellow : Color.White) : new Color(90, 90, 90, 255));
     }
 
+    if (game.IsCtf)
+    {
+        int cw = Raylib.GetScreenWidth();
+        string sc = $"RED {game.TeamScore[1]}  -  {game.TeamScore[2]} BLUE";
+        Raylib.DrawText(sc, cw / 2 - Raylib.MeasureText(sc, 30) / 2, 12, 30, Color.White);
+        Raylib.DrawText($"first to {game.CaptureLimit}", cw / 2 - Raylib.MeasureText($"first to {game.CaptureLimit}", 16) / 2, 44, 16, Color.Gray);
+        string FlagText(Team t)
+        {
+            var f = game.FlagOf(t)!;
+            return f.State switch { FlagState.Home => "HOME", FlagState.Dropped => $"DROPPED {Math.Max(0, (int)(f.ReturnAt - game.Time))}s", _ => f.Carrier == p ? "YOU HAVE IT" : $"TAKEN by {f.Carrier?.Name}" };
+        }
+        Raylib.DrawText($"YOUR FLAG: {FlagText(Team.Red)}", 16, 108 + 8 * 22 + 8, 20, new Color(255, 110, 100, 255));
+        Raylib.DrawText($"ENEMY FLAG: {FlagText(Team.Blue)}", 16, 108 + 8 * 22 + 32, 20, new Color(110, 160, 255, 255));
+        if (game.Winner != Team.None)
+        {
+            string wt = $"{game.Winner.Label()} TEAM WINS";
+            Raylib.DrawText(wt, cw / 2 - Raylib.MeasureText(wt, 60) / 2, 250, 60, game.Winner == Team.Red ? new Color(255, 90, 80, 255) : new Color(100, 150, 255, 255));
+        }
+        else if (game.Carrying(p) != null)
+        {
+            string ct = "YOU HAVE THE FLAG - GET HOME";
+            Raylib.DrawText(ct, cw / 2 - Raylib.MeasureText(ct, 24) / 2, 70, 24, Color.Yellow);
+        }
+    }
+
     // scoreboard (top right)
     int sy = 16, sx = Raylib.GetScreenWidth() - 260;
     foreach (var c in game.Combatants.OrderByDescending(c => c.Frags))
     {
-        Raylib.DrawText($"{c.Name,-6} {c.Frags,3} / {c.Deaths,-3}", sx, sy, 20, c == p ? Color.Yellow : Color.White);
+        var scol = c == p ? Color.Yellow : c.Team == Team.Red ? new Color(255, 130, 120, 255) : c.Team == Team.Blue ? new Color(130, 170, 255, 255) : Color.White;
+        Raylib.DrawText($"{c.Name,-6} {c.Frags,3} / {c.Deaths,-3}", sx, sy, 20, scol);
         sy += 22;
     }
 

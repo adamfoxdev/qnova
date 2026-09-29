@@ -3,7 +3,7 @@ using System.Numerics;
 namespace Qnova.Core;
 
 /// <summary>Fixed-step simulation of the human player, bots, dummy targets and projectiles.</summary>
-public sealed class GameWorld
+public sealed partial class GameWorld
 {
     public const float TickRate = 72f;
     public const float Dt = 1f / TickRate;
@@ -70,6 +70,7 @@ public sealed class GameWorld
         Pickups.Clear(); Pickups.AddRange(m.Pickups);
         JumpPads.Clear(); JumpPads.AddRange(m.JumpPads);
         SpawnPoints.Clear(); SpawnPoints.AddRange(m.Spawns);
+        _current = m;
         Targets.Clear();
         foreach (var d in m.Dummies) Targets.Add(new Target { Origin = d });
         SpawnPoint = m.PlayerSpawn;
@@ -77,7 +78,8 @@ public sealed class GameWorld
 
         Projectiles.Clear(); Events.Clear();
         foreach (var c in Combatants) { c.Frags = 0; c.Deaths = 0; ReleaseHook(c); }
-        Reset(Player, SpawnPoint);
+        SetupMode();
+        if (IsCtf) RespawnPlayer(Player); else Reset(Player, SpawnPoint);
         foreach (var b in Bots) RespawnPlayer(b.Body);
         MapLoaded?.Invoke();
     }
@@ -125,6 +127,7 @@ public sealed class GameWorld
         UpdateHooks();
         UpdatePads();
         UpdatePickups();
+        UpdateFlags();
         UpdateProjectiles();
         foreach (var t in Targets)
             if (!t.Alive && Time >= t.RespawnAt) t.Health = 100;
@@ -138,6 +141,7 @@ public sealed class GameWorld
         body.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());   // bots spawn with the full arsenal
         var bot = new Bot(body, Rng.Next());
         Bots.Add(bot);
+        if (IsCtf) AssignTeams();
         RespawnPlayer(body);
         return bot;
     }
@@ -146,7 +150,7 @@ public sealed class GameWorld
     public void RespawnPlayer(Player p)
     {
         var best = SpawnPoint; float bestScore = float.MinValue;
-        foreach (var sp in SpawnPoints.Count > 0 ? SpawnPoints : new List<Vector3> { SpawnPoint })
+        foreach (var sp in SpawnCandidates(p))
         {
             float nearest = float.MaxValue;
             foreach (var o in Combatants) if (o != p && o.Alive) nearest = MathF.Min(nearest, Vector3.Distance(o.Move.Position, sp));
@@ -154,6 +158,12 @@ public sealed class GameWorld
             if (score > bestScore) { bestScore = score; best = sp; }
         }
         Reset(p, best);
+    }
+
+    IEnumerable<Vector3> SpawnCandidates(Player p)
+    {
+        if (IsCtf && _teamSpawns.TryGetValue(p.Team, out var mine) && mine.Count > 0) return mine;
+        return SpawnPoints.Count > 0 ? SpawnPoints : new List<Vector3> { SpawnPoint };
     }
 
     internal void Reset(Player p, Vector3 at)
@@ -383,7 +393,7 @@ public sealed class GameWorld
         foreach (var t in Targets)
             if (t.Alive && World.RayVsBox(origin, dir * range, t.Bounds.Min, t.Bounds.Max, out float f, out _) && f * range <= reach) return true;
         foreach (var o in Combatants)
-            if (o != shooter && o.Alive)
+            if (o != shooter && o.Alive && !Friendly(shooter, o))
             {
                 var b = Box(o);
                 if (World.RayVsBox(origin, dir * range, b.Min, b.Max, out float f, out _) && f * range <= reach) return true;
@@ -578,6 +588,7 @@ public sealed class GameWorld
     public void DamagePlayer(Player v, int dmg, Vector3 dir, Player? by, bool knock = true, WeaponId? weapon = null)
     {
         if (!v.Alive || dmg <= 0) return;
+        if (by != null && by != v && Friendly(by, v)) return;      // no friendly fire
         if (knock) v.Move.Velocity += dir * dmg * 8f;
         if (!v.God) v.Health -= dmg;
         var flags = (by == Player ? HurtFlags.ByHuman : 0) | (v == Player ? HurtFlags.VictimHuman : 0) | (v.Health <= 0 ? HurtFlags.Killing : 0);
@@ -591,6 +602,8 @@ public sealed class GameWorld
     {
         v.Health = Math.Min(v.Health, 0);
         v.Deaths++;
+        if (by != null && by != v && Carrying(v) != null) by.Frags += 2;   // carrier kill bonus
+        DropFlag(v); 
         v.RespawnAt = Time + RespawnDelay;
         string gun = weapon is { } w ? WeaponDef.Get(w).Name : "";
         if (by != null && by != v) { by.Frags++; Console.Print($"{by.Name} killed {v.Name}" + (gun.Length > 0 ? $" with the {gun}" : "")); }

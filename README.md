@@ -55,12 +55,25 @@ grenade launcher in the bunkers, rocket launcher on the east ledge. A collected 
 100 shells / 200 nails / 100 rockets. Bots collect items too and head for health when hurt. `pickups` lists what's ready.
 Pickups are drawn as procedurally painted pixel-art sprites (no image files): a distinct silhouette for each of the eight guns, a first-aid case, and shells / nails / rockets / cells / slugs, each on a coloured glow that matches its light. They bob over a floor pad and always face the camera; `r_plain 1` swaps them back to flat coloured cubes.
 
+## Capture the flag
+
+Pick **GAME MODE: CAPTURE THE FLAG** in the menu (or `gamemode ctf` in the console; `gamemode dm` goes back). It reloads the current map
+as a 2v2: you and one bot are **Red**, two bots are **Blue**, with no friendly fire (the crosshair stays white over teammates).
+
+- Touch the enemy flag to pick it up; carry it to your own flag while your flag is home to score (+1 for the team, +5 frags).
+- Killing a carrier drops the flag there (+2 frags); a teammate touching a dropped flag returns it, or it goes home by itself after 30 s.
+- First to `capturelimit` (default 5) wins; a few seconds later scores reset for a new match. `flags` shows score and flag states.
+- The Classic Arena has bases at the north and south walls, each behind a cover wall; random maps put them at the two farthest-apart spawns.
+- Bots play it: one attacker per team goes for the enemy flag (the second red attacker escorts you), defenders loiter near base, everyone
+  returns a dropped flag or hunts the thief, and a carrier runs home instead of duelling. Bot navigation is simple steering, so on
+  random maps with stairs and walls between the bases they may struggle to get across.
+
 ## Splash screen and menu
 
 The game opens on a dark, gritty splash: **QNOVA** in riveted steel with a furnace burning in the O that detonates every
 few seconds (fireball, sparks, smoke, shockwave, screen shake). Everything is drawn procedurally, with no image assets.
 
-- **START GAME / RANDOM MAP / CLASSIC ARENA / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
+- **START GAME / RANDOM MAP / CLASSIC ARENA / GAME MODE / OPTIONS / QUIT** — arrows or W/S to move, Enter to confirm, mouse hover/click also works.
 - **OPTIONS** — mouse sensitivity, field of view, volume, bot skill, number of bots (0-4), auto bunny-hop, zoom FOV, plain blocks (flat untextured rendering; also `r_plain 1` in the console), damage numbers, key bindings. Left/Right adjust; Esc goes back.
 - **Esc in game** opens the same screen as a pause menu (START becomes RESUME GAME); Esc again resumes.
 
