@@ -123,6 +123,7 @@ public sealed class MenuModel
 
         options.Items.Add(Slider(g, "MOUSE SENSITIVITY", "sensitivity", 0.02f, 0.5f, 0.01f, "0.00"));
         options.Items.Add(Slider(g, "FIELD OF VIEW", "fov", 60f, 120f, 5f, "0"));
+        options.Items.Add(Slider(g, "ZOOM FOV", "zoom_fov", 10f, 60f, 5f, "0"));
         options.Items.Add(Slider(g, "VOLUME", "volume", 0f, 1f, 0.1f, "0%"));
         options.Items.Add(Slider(g, "BOT SKILL", "bot_skill", 1f, 5f, 1f, "0"));
         options.Items.Add(new MenuItem

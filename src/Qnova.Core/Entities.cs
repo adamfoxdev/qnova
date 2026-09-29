@@ -72,6 +72,7 @@ public sealed class Projectile
     public ProjectileKind Kind;
     public Vector3 Pos, Vel;
     public Player? Owner;
+    public WeaponId Weapon;     // which gun fired it (for kill messages)
     public float Expires;
     public int Damage;
     public float Splash;

@@ -100,6 +100,17 @@ public static class GameCommands
             var m = p.Move;
             c.Print($"pos {GameConsole.Fmt(m.Position.X)} {GameConsole.Fmt(m.Position.Y)} {GameConsole.Fmt(m.Position.Z)}  vel {GameConsole.Fmt(m.Velocity.X)} {GameConsole.Fmt(m.Velocity.Y)} {GameConsole.Fmt(m.Velocity.Z)}");
         });
+        void GiveArsenal()
+        {
+            p.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());
+            p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets;
+            c.Print($"all weapons and full ammo ({Player.MaxShells} shells, {Player.MaxNails} nails, {Player.MaxRockets} rockets)");
+        }
+        c.AddCommand("giveall", "giveall", "Give every weapon and full ammo (health untouched; 'give all' also heals)", a => GiveArsenal(), cheat: true);
+        c.AddCommand("impulse", "impulse 9", "Quake-style: impulse 9 gives every weapon and full ammo", a =>
+        {
+            if (a.Length > 0 && a[0] == "9") GiveArsenal(); else c.Print("only impulse 9 is supported");
+        }, cheat: true);
         c.AddCommand("kill", "kill", "Suicide", a => g.Die(p, p));
         c.AddCommand("bot_add", "bot_add [count]", "Add bots", a =>
         {
