@@ -131,3 +131,45 @@ public class MapFileTests
         Assert.Contains(g.Console.Lines, l => l.Contains("map check"));
     }
 }
+
+public class ShippedMapTests
+{
+    static string Repo()
+    {
+        var d = new DirectoryInfo(AppContext.BaseDirectory);
+        while (d != null && !File.Exists(Path.Combine(d.FullName, "maps", "classic_arena.json"))) d = d.Parent;
+        return d?.FullName ?? throw new FileNotFoundException("maps/classic_arena.json not found above " + AppContext.BaseDirectory);
+    }
+
+    [Fact]
+    public void Shipped_classic_arena_file_matches_the_built_in_arena()
+    {
+        var file = MapJson.Load(Path.Combine(Repo(), "maps", "classic_arena.json"));
+        var built = Arena.Data();
+        Assert.Equal(built.Solids, file.Solids);
+        Assert.Equal(built.Pickups.Count, file.Pickups.Count);
+        Assert.Equal(built.JumpPads.Count, file.JumpPads.Count);
+        Assert.Equal(built.RedFlag, file.RedFlag);
+    }
+
+    [Fact]
+    public void Every_shipped_map_loads_and_passes_the_check()
+    {
+        foreach (var f in Directory.GetFiles(Path.Combine(Repo(), "maps"), "*.json"))
+        {
+            var r = MapCheck.Check(MapJson.Load(f));
+            Assert.True(r.Ok, $"{Path.GetFileName(f)}: {string.Join("; ", r.Errors)}");
+        }
+    }
+
+    [Fact]
+    public void Editor_template_arena_is_the_shipped_arena()
+    {
+        // the editor embeds the classic arena as its template; keep it in step with the shipped file
+        string html = File.ReadAllText(Path.Combine(Repo(), "editor", "index.html"));
+        var arena = MapJson.Load(Path.Combine(Repo(), "maps", "classic_arena.json"));
+        Assert.Contains("const ARENA = {", html);
+        Assert.Contains(((int)arena.Solids[0].Max.X).ToString(), html);
+        Assert.Contains("\"redFlag\":[0,40,-1850]", html);
+    }
+}
