@@ -55,6 +55,9 @@ public sealed class PlayerMove
 
     public bool NoClip;         // fly through geometry (cheat)
     public Vector3? HookAnchor; // set while a grappling hook is attached: the player is reeled in toward it
+    bool _swinging;             // hooked with jump held: the rope acts as a fixed-length line (pendulum) instead of reeling
+    float _ropeLen;
+    public bool Swinging => _swinging && HookAnchor != null;
 
     readonly World _world;
     readonly MoveSettings _s;
@@ -91,13 +94,15 @@ public sealed class PlayerMove
         }
         _jumpHeld = cmd.Jump;
 
-        if (HookAnchor is { } anchor) { HookMove(anchor, dt); return; }
+        if (HookAnchor == null) _swinging = false;
 
         var wishvel = ForwardFlat(cmd.Yaw) * (cmd.Forward * MoveVars.MoveScale)
                     + RightFlat(cmd.Yaw) * (cmd.Side * MoveVars.MoveScale);
         float wishspeed = wishvel.Length();
         var wishdir = wishspeed > 1e-4f ? wishvel / wishspeed : Vector3.Zero;
         if (wishspeed > _s.MaxSpeed) wishspeed = _s.MaxSpeed;
+
+        if (HookAnchor is { } anchor) { HookMove(anchor, dt, cmd.Jump, wishdir, wishspeed); return; }
 
         if (OnGround)
         {
@@ -115,10 +120,24 @@ public sealed class PlayerMove
         CheckGround();
     }
 
-    /// <summary>Reel toward the anchor: velocity eases to HookSpeed along the line (gravity is overridden), then slides as
-    /// usual. Within a few dozen units the player hangs. Releasing the hook keeps the momentum (slingshot).</summary>
-    void HookMove(Vector3 anchor, float dt)
+    /// <summary>While hooked. Default: reel toward the anchor (velocity eases to HookSpeed along the line, gravity overridden;
+    /// within a few dozen units the player hangs). Holding jump instead makes the rope a fixed-length line so gravity swings the
+    /// player like a pendulum, with air steering to pump the swing. Letting go of jump resumes the reel; releasing the hook keeps
+    /// the momentum (slingshot).</summary>
+    void HookMove(Vector3 anchor, float dt, bool swing, Vector3 wishdir, float wishspeed)
     {
+        if (swing)
+        {
+            if (!_swinging) { _swinging = true; _ropeLen = MathF.Max(48f, Vector3.Distance(Position, anchor)); }
+            SwingSteer(wishdir, wishspeed, dt);
+            if (OnGround) ApplyFriction(dt); else Velocity.Y -= _s.Gravity * dt;
+            FlyMove(dt, out _);
+            ConstrainRope(anchor);
+            CheckGround();
+            return;
+        }
+
+        _swinging = false;
         OnGround = false;
         var to = anchor - Position;
         float dist = to.Length();
@@ -127,6 +146,28 @@ public sealed class PlayerMove
         FlyMove(dt, out _);
         var tr = _world.TraceBox(Position, Position - new Vector3(0, 1f, 0), MoveVars.Half);
         if (tr.Hit && tr.Normal.Y > 0.7f && Velocity.Y <= 0) OnGround = true;   // skimming a floor while reeling in
+    }
+
+    /// <summary>Stronger air control than normal so strafing can pump a swing (a normal air move is capped near 30 u/s).</summary>
+    void SwingSteer(Vector3 wishdir, float wishspeed, float dt)
+    {
+        if (wishspeed < 1f) return;
+        float add = MathF.Min(wishspeed, 260f) - Vector3.Dot(Velocity, wishdir);
+        if (add <= 0) return;
+        Velocity += wishdir * MathF.Min(_s.AirAccelerate * 0.6f * wishspeed * dt, add);
+    }
+
+    /// <summary>A rope only pulls, never pushes: past its length, move back onto the circle and drop the outward velocity.</summary>
+    void ConstrainRope(Vector3 anchor)
+    {
+        var to = anchor - Position;
+        float dist = to.Length();
+        if (dist <= _ropeLen || dist < 1e-3f) return;
+        var n = to / dist;
+        var tr = _world.TraceBox(Position, Position + n * (dist - _ropeLen), MoveVars.Half);
+        Position = tr.EndPos;
+        float outward = -Vector3.Dot(Velocity, n);
+        if (outward > 0) Velocity += n * outward;
     }
 
     void NoClipMove(in UserCmd cmd, float dt)
