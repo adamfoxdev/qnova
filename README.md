@@ -43,3 +43,11 @@ aim rockets at your feet, and pick a weapon by range. Both sides respawn after 3
 farthest from the enemy. The scoreboard (top right) shows frags / deaths; suicide costs a frag.
 
 - `bot_add [n]`, `bot_removeall`, `bots` (scoreboard), `bot_skill 1-5` (aim error, reaction time, turn speed, shot delay), `bot_ai 0|1` (freeze bots)
+
+## Pickups
+
+Health (+25), shells, nails and rockets boxes, and a floor weapon for each gun. You start with only the axe and
+shotgun and lose extra guns when you die. Weapons: double shotgun on the central mesa, nailgun / super nailgun /
+grenade launcher in the bunkers, rocket launcher on the east ledge. A collected item is gone for **30 seconds**
+(`sv_pickup_respawn`), then respawns with a sound. Items you can't use (full health, full ammo) stay put; ammo caps at
+100 shells / 200 nails / 100 rockets. Bots collect items too and head for health when hurt. `pickups` lists what's ready.

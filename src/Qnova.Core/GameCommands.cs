@@ -43,6 +43,7 @@ public static class GameCommands
         c.AddCvar("sv_autohop", 0, "Hold jump to keep bunny-hopping (0/1)", v => p.Move.AutoHop = v != 0);
 
         // ---- bots ----
+        c.AddCvar("sv_pickup_respawn", g.PickupRespawn, "Seconds before a collected pickup returns", v => g.PickupRespawn = Math.Max(0f, v));
         c.AddCvar("bot_ai", 1, "Bots think and act (0 freezes them)", v => g.BotAi = v != 0);
         c.AddCvar("bot_skill", g.BotSkill, "Bot skill 1 (easy) to 5 (hard)", v => g.BotSkill = (int)Math.Clamp(v, 1, 5));
 
@@ -65,6 +66,7 @@ public static class GameCommands
         c.AddCommand("weapon", "weapon <1-7|name>", "Select a weapon", a =>
         {
             if (a.Length < 1 || !TryWeapon(a[0], out var w)) { c.Print("usage: weapon <1-7|axe|sg|ssg|ng|sng|gl|rl>"); return; }
+            if (!p.Owned.Contains(w)) { c.Print($"you don't have the {WeaponDef.Get(w).Name}"); return; }
             p.Current = w; c.Print($"weapon: {WeaponDef.Get(w).Name}");
         });
         c.AddCommand("give", "give <all|health|ammo|weapon> [amount]", "Give items", a =>
@@ -73,7 +75,10 @@ public static class GameCommands
             int amt = a.Length > 1 && int.TryParse(a[1], out var n) ? n : -1;
             switch (a[0].ToLowerInvariant())
             {
-                case "all": p.Shells = p.Nails = p.Rockets = 200; p.Health = p.MaxHealth; c.Print("gave everything"); break;
+                case "all":
+                    p.Owned = new HashSet<WeaponId>(Enum.GetValues<WeaponId>());
+                    p.Shells = Player.MaxShells; p.Nails = Player.MaxNails; p.Rockets = Player.MaxRockets; p.Health = p.MaxHealth;
+                    c.Print("gave everything"); break;
                 case "health": p.Health = amt >= 0 ? amt : p.MaxHealth; c.Print($"health {p.Health}"); break;
                 case "ammo": { int k = amt >= 0 ? amt : 100; p.Shells += k; p.Nails += k; p.Rockets += k; c.Print($"+{k} of each ammo"); break; }
                 case "shells": p.Shells += amt >= 0 ? amt : 25; c.Print($"shells {p.Shells}"); break;
@@ -118,6 +123,12 @@ public static class GameCommands
             c.Print($"spawned {n} dummy(s)");
         }, cheat: true);
         c.AddCommand("killtargets", "killtargets", "Remove all dummies", a => { c.Print($"removed {g.Targets.Count} dummies"); g.Targets.Clear(); }, cheat: true);
+        c.AddCommand("pickups", "pickups", "List pickups and seconds until each returns", a =>
+        {
+            foreach (var k in g.Pickups)
+                c.Print($"{k.Name,-18} at {GameConsole.Fmt(k.Position.X)} {GameConsole.Fmt(k.Position.Y)} {GameConsole.Fmt(k.Position.Z)}  " +
+                        (k.Active ? "ready" : $"back in {Math.Max(0f, k.RespawnAt - g.Time):0.0}s"));
+        });
         c.AddCommand("stats", "stats", "Print player status", a =>
             c.Print($"health {p.Health}  shells {p.Shells}  nails {p.Nails}  rockets {p.Rockets}  frags {p.Frags}  weapon {WeaponDef.Get(p.Current).Name}"));
     }
