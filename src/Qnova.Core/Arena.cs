@@ -64,8 +64,92 @@ public static class Arena
         foreach (var pos in new[] { new Vector3(-600, 28, -900), new(600, 28, 900), new(0, 156, 0) })
             g.Targets.Add(new Target { Origin = pos });
         AddPickups(g);
+        AddVisuals(g);
         for (int i = 0; i < bots; i++) g.AddBot();
         return g;
+    }
+
+    /// <summary>Visual dressing: ceiling girders, trim, pillar collars, glowing fixtures and the lights they cast.</summary>
+    static void AddVisuals(GameWorld g)
+    {
+        var pillars = new[] { (-900f, -900f), (900f, -900f), (-900f, 900f), (900f, 900f), (-1000f, 0f), (0f, -1000f), (0f, 1000f) };
+        var warm = new Vector3(1.9f, 0.95f, 0.38f);
+        var cold = new Vector3(0.35f, 0.85f, 1.3f);
+        var red = new Vector3(1.8f, 0.18f, 0.12f);
+        var lampCol = new Vector3(255, 214, 150);
+
+        void Decor(Vector3 min, Vector3 max, Surface m, Vector3 color = default) => g.Decor.Add(new DecorBox(new Aabb(min, max), m, color));
+        void Fixture(Vector3 c, Vector3 half, Vector3 color) => Decor(c - half, c + half, Surface.Emissive, color);
+        void Light(Vector3 p, Vector3 col, float radius, bool flicker = false) => g.Lights.Add(new MapLight { Position = p, Color = col, Radius = radius, Flicker = flicker });
+
+        // ceiling girders: a grid of steel beams hugging the ceiling
+        for (float z = -1536; z <= 1536; z += 1024) Decor(new(-Half, Height - 64, z - 48), new(Half, Height, z + 48), Surface.Metal);
+        for (float x = -1536; x <= 1536; x += 1024) Decor(new(x - 48, Height - 96, -Half), new(x + 48, Height - 64, Half), Surface.Metal);
+
+        // skirting along the outer walls
+        Decor(new(-Half, 0, -Half), new(Half, 20, -Half + 24), Surface.Metal);
+        Decor(new(-Half, 0, Half - 24), new(Half, 20, Half), Surface.Metal);
+        Decor(new(-Half, 0, -Half), new(-Half + 24, 20, Half), Surface.Metal);
+        Decor(new(Half - 24, 0, -Half), new(Half, 20, Half), Surface.Metal);
+
+        // pillars: base and cap collars, plus a wall torch on the face toward the centre
+        foreach (var (px, pz) in pillars)
+        {
+            Decor(new(px - 60, 0, pz - 60), new(px + 60, 36, pz + 60), Surface.Metal);
+            Decor(new(px - 60, Height - 40, pz - 60), new(px + 60, Height, pz + 60), Surface.Metal);
+            var toCentre = new Vector3(-px, 0, -pz);
+            toCentre = toCentre.LengthSquared() < 1 ? Vector3.UnitZ : Vector3.Normalize(toCentre);
+            var torch = new Vector3(px, 300, pz) + toCentre * 62f;
+            Fixture(torch, new(9, 22, 9), new Vector3(255, 150, 60));
+            Light(torch + toCentre * 30f, warm, 760f, flicker: true);
+        }
+
+        // bunkers: a cold lamp inside each, a warm one over each doorway
+        foreach (var (sx, sz) in new[] { (-1, -1), (1, -1), (-1, 1), (1, 1) })
+        {
+            float cx = sx * 1500f, cz = sz * 1500f;
+            Fixture(new(cx, 176, cz + 140), new(28, 6, 8), new Vector3(120, 210, 255));
+            Light(new(cx, 150, cz + 140), cold, 760f);
+            Light(new(cx - sx * 300f, 150, cz), warm * 0.8f, 520f, flicker: true);
+            Fixture(new(cx - sx * 262f, 168, cz), new(6, 12, 10), new Vector3(255, 150, 60));
+        }
+
+        // mesa: glowing edge strips and red corner beacons
+        Fixture(new(0, 132, -384), new(384, 4, 3), new Vector3(255, 90, 30));
+        Fixture(new(0, 132, 384), new(384, 4, 3), new Vector3(255, 90, 30));
+        Fixture(new(-384, 132, 0), new(3, 4, 384), new Vector3(255, 90, 30));
+        Fixture(new(384, 132, 0), new(3, 4, 384), new Vector3(255, 90, 30));
+        foreach (var (mx, mz) in new[] { (-340f, -340f), (340f, -340f), (-340f, 340f), (340f, 340f) })
+        {
+            Decor(new(mx - 14, 128, mz - 14), new(mx + 14, 178, mz + 14), Surface.Metal);
+            Fixture(new(mx, 190, mz), new(12, 12, 12), new Vector3(255, 40, 30));
+            Light(new(mx, 215, mz), red, 520f, flicker: true);
+        }
+
+        // east ledge
+        foreach (float lz in new[] { -420f, 420f })
+        {
+            Fixture(new(2020, 250, lz), new(8, 24, 10), new Vector3(255, 150, 60));
+            Light(new(1985, 250, lz), warm, 700f, flicker: true);
+        }
+
+        // perimeter wall lamps
+        foreach (float t in new[] { -1200f, 0f, 1200f })
+        {
+            foreach (var (x, z, dx, dz) in new[] { (t, -Half + 30, 0, 1), (t, Half - 30, 0, -1), (-Half + 30, t, 1, 0), (Half - 30, t, -1, 0) })
+            {
+                Fixture(new(x, 230, z), new(dx == 0 ? 22 : 6, 30, dz == 0 ? 22 : 6), new Vector3(255, 160, 70));
+                Light(new(x + dx * 40f, 230, z + dz * 40f), warm * 0.85f, 800f, flicker: t == 0);
+            }
+        }
+
+        // ceiling lamps: soft general illumination over the open floor
+        foreach (float lx in new[] { -1300f, 0f, 1300f })
+            foreach (float lz in new[] { -1300f, 0f, 1300f })
+            {
+                Fixture(new(lx, Height - 100, lz), new(56, 4, 56), lampCol);
+                Light(new(lx, Height - 130, lz), new Vector3(1.0f, 0.82f, 0.6f), 1500f);
+            }
     }
 
     static void AddPickups(GameWorld g)

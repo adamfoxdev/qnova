@@ -5,10 +5,12 @@ using Raylib_cs;
 const float S = 1f / 32f;   // Quake units -> render units
 static Vector3 R(Vector3 v) => v * S;
 
-// Developer flags (used to capture screenshots headlessly): --start, --paused, --options, --console, --exec "<console line>", --shot <png> [--shot-after <sec>]
+// Developer flags (used to capture screenshots headlessly): --start, --paused, --options, --console, --lock-look, --pos "x y z", --yaw, --pitch, --exec "<console line>", --shot <png> [--shot-after <sec>]
 string? Arg(string name) { int i = Array.IndexOf(args, name); return i >= 0 && i + 1 < args.Length ? args[i + 1] : null; }
+bool devLock = args.Contains("--lock-look");   // ignore mouse look (keeps screenshots framed)
 bool devStart = args.Contains("--start"), devConsole = args.Contains("--console");
-string? devExec = Arg("--exec"), shotPath = Arg("--shot");
+string? devExec = Arg("--exec"), shotPath = Arg("--shot"), devPos = Arg("--pos");
+float? DevF(string n) => float.TryParse(Arg(n), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : null;
 long frameCount = 0;
 double shotAfter = double.TryParse(Arg("--shot-after"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sa) ? sa : 2.0;
 
@@ -71,6 +73,8 @@ var menu = MenuModel.Create(game, () => started, () =>
     Raylib.DisableCursor();
 }, () => quit = true);
 
+var mapRenderer = new MapRenderer();
+var dynLights = new List<(Vector3 Pos, Vector3 Color, float Radius, float Start, float Duration)>();   // explosions and muzzle flashes
 var effects = new List<(Vector3 Pos, float Until, float Radius, Color Color)>();
 var tracers = new List<(Vector3 A, Vector3 B, float Until)>();
 float yaw = -90, pitch = 0, acc = 0;
@@ -89,6 +93,13 @@ var keys = new (KeyboardKey Key, WeaponId Id)[]
 if (devStart) { started = true; inMenu = false; Raylib.DisableCursor(); }
 if (args.Contains("--paused")) started = true;               // show the pause variant of the menu
 if (args.Contains("--options")) { menu.SetSelected(1); menu.Select(); menu.SetSelected(4); }
+if (devPos != null)
+{
+    var pp = devPos.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+    game.Player.Move.Position = new Vector3(pp[0], pp[1], pp[2]);
+}
+if (DevF("--yaw") is float dy) yaw = dy;
+if (DevF("--pitch") is float dp) pitch = dp;
 if (devExec != null) game.Console.Execute(devExec, echo: false);
 if (devConsole) ui.Toggle();
 
@@ -147,7 +158,7 @@ while (!quit && !Raylib.WindowShouldClose())
     if (ui.Open) ui.Update();
     bool paused = ui.Open;   // game input and simulation freeze while the console is down
 
-    var md = paused || skipMouse ? default : Raylib.GetMouseDelta();
+    var md = paused || skipMouse || devLock ? default : Raylib.GetMouseDelta();
     skipMouse = false;
     yaw -= md.X * sens;
     pitch = Math.Clamp(pitch - md.Y * sens, -89f, 89f);
@@ -193,11 +204,15 @@ while (!quit && !Raylib.WindowShouldClose())
             double now = Raylib.GetTime();
             switch (e.Kind)
             {
-                case EventKind.Shot: Play(SoundSynth.ForWeapon((WeaponId)e.Arg), e.A, game.Player.Eye, 0.8f); break;
+                case EventKind.Shot:
+                    Play(SoundSynth.ForWeapon((WeaponId)e.Arg), e.A, game.Player.Eye, 0.8f);
+                    if (e.Arg != (int)WeaponId.Axe) dynLights.Add((e.A, new Vector3(1.7f, 1.3f, 0.7f), 520f, (float)now, 0.08f));
+                    break;
                 case EventKind.DryFire: Play(SoundId.DryFire, e.A, game.Player.Eye, 0.6f); break;
                 case EventKind.Bounce: Play(SoundId.Bounce, e.A, game.Player.Eye, 0.7f); break;
                 case EventKind.Explosion:
                     Play(SoundId.Explosion, e.A, game.Player.Eye);
+                    dynLights.Add((e.A, new Vector3(3.0f, 1.6f, 0.7f), 1200f, (float)now, 0.55f));
                     effects.Add((e.A, (float)now + 0.35f, 120, Color.Orange)); break;
                 case EventKind.Pickup: Play(SoundSynth.ForPickup((PickupKind)e.Arg), e.A, game.Player.Eye, e.B.X == 1 ? 1f : 0.5f); break;
                 case EventKind.ItemRespawn: Play(SoundId.ItemRespawn, e.A, game.Player.Eye, 0.4f); break;
@@ -220,15 +235,43 @@ while (!quit && !Raylib.WindowShouldClose())
     Raylib.BeginDrawing();
     Raylib.ClearBackground(new Color(20, 20, 26, 255));
     Raylib.BeginMode3D(cam);
-    foreach (var s in game.Map.Solids)
+    // --- lit world: gather lights, then draw solids + decor with the map shader ---
+    var lightSrcs = new List<LightSrc>(64);
+    foreach (var l in game.Lights)
     {
-        var c = R(s.Center); var sz = R(s.Max - s.Min);
-        float shade = 90 + (Math.Abs(s.Center.X * 7 + s.Center.Y * 13 + s.Center.Z * 3) % 60);
-        Raylib.DrawCubeV(c, sz, new Color((int)shade, (int)(shade * 0.85f), (int)(shade * 0.7f), 255));
-        Raylib.DrawCubeWiresV(c, sz, new Color(30, 25, 20, 255));
+        float fl = l.Flicker ? 0.82f + 0.18f * MathF.Sin(now2 * 13f + l.Position.X) * MathF.Sin(now2 * 5.1f + l.Position.Z) : 1f;
+        lightSrcs.Add(new LightSrc(l.Position, l.Color * fl, l.Radius));
+    }
+    foreach (var k in game.Pickups)
+        if (k.Active)
+        {
+            var pc = k.Kind switch { PickupKind.Health => new Vector3(0.2f, 0.9f, 0.35f), PickupKind.Shells => new Vector3(0.9f, 0.5f, 0.12f), PickupKind.Nails => new Vector3(0.6f, 0.6f, 0.7f), PickupKind.Rockets => new Vector3(0.9f, 0.2f, 0.15f), _ => new Vector3(1f, 0.85f, 0.2f) };
+            lightSrcs.Add(new LightSrc(k.Position + new Vector3(0, 20, 0), pc, k.Kind == PickupKind.Weapon ? 260f : 190f));
+        }
+    foreach (var pr in game.Projectiles)
+        if (pr.Kind != ProjectileKind.Nail) lightSrcs.Add(new LightSrc(pr.Pos, pr.Kind == ProjectileKind.Rocket ? new Vector3(1.6f, 0.8f, 0.3f) : new Vector3(0.4f, 1.0f, 0.3f), 380f));
+    dynLights.RemoveAll(d => now2 - d.Start > d.Duration);
+    foreach (var d in dynLights)
+    {
+        float t01 = (now2 - d.Start) / d.Duration;
+        lightSrcs.Add(new LightSrc(d.Pos, d.Color * (1f - t01) * (1f - t01), d.Radius * (0.6f + 0.4f * t01)));
+    }
+    mapRenderer.Frame(p.Eye, lightSrcs, now2);
+
+    mapRenderer.Begin();
+    foreach (var sol in game.Map.Solids)
+    {
+        var mat = SurfaceRules.For(sol, Arena.Height);
+        MapRenderer.Box(sol, mat, MapRenderer.Palette(mat, sol));
+    }
+    foreach (var dc in game.Decor)
+    {
+        var col = dc.Surface == Surface.Emissive ? new Color((byte)dc.Color.X, (byte)dc.Color.Y, (byte)dc.Color.Z, (byte)255) : MapRenderer.Palette(dc.Surface, dc.Box);
+        MapRenderer.Box(dc.Box, dc.Surface, col);
     }
     foreach (var t in game.Targets)
-        if (t.Alive) Raylib.DrawCubeV(R(t.Origin), R(t.Half * 2), new Color(180, 60 + t.Health, 60, 255));
+        if (t.Alive) MapRenderer.Box(Aabb.FromCenter(t.Origin, t.Half), Surface.Flat, new Color(190, 70 + t.Health, 60, 255));
+    mapRenderer.End();
     float tnow = (float)Raylib.GetTime();
     for (int i = 0; i < game.Pickups.Count; i++)
     {
@@ -253,10 +296,11 @@ while (!quit && !Raylib.WindowShouldClose())
     {
         var bp = b.Body;
         if (!bp.Alive) continue;
-        var c = R(bp.Move.Position); var size = R(MoveVars.Half * 2);
-        var body = new Color(60, 110, 200, 255);
-        Raylib.DrawCubeV(c, size, body);
-        Raylib.DrawCubeWiresV(c, size, new Color(10, 20, 50, 255));
+        var body = new Color(70, 120, 210, 255);
+        mapRenderer.Begin();
+        MapRenderer.Box(Aabb.FromCenter(bp.Move.Position, MoveVars.Half), Surface.Flat, body);
+        MapRenderer.Box(Aabb.FromCenter(bp.Move.Position + new Vector3(0, 40, 0), new Vector3(8, 8, 8)), Surface.Flat, new Color(225, 195, 165, 255));
+        mapRenderer.End();
         Raylib.DrawSphere(R(bp.Move.Position + new Vector3(0, 34, 0)), 0.32f, new Color(230, 200, 170, 255));
         var look = bp.Look;
         Raylib.DrawLine3D(R(bp.Eye), R(bp.Eye + look * 40f), Color.Red);   // gun barrel: shows where it is aiming
@@ -328,6 +372,7 @@ while (!quit && !Raylib.WindowShouldClose())
 }
 foreach (var (pool, _) in sounds.Values) foreach (var snd in pool) Raylib.UnloadSound(snd);
 if (audioOk) Raylib.CloseAudioDevice();
+mapRenderer.Unload();
 splash.Unload();
 ui.Unload();
 Raylib.CloseWindow();
