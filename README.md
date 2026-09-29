@@ -53,6 +53,7 @@ shotgun and lose extra guns when you die. Weapons: double shotgun on the central
 grenade launcher in the bunkers, rocket launcher on the east ledge. A collected item is gone for **30 seconds**
 (`sv_pickup_respawn`), then respawns with a sound. Items you can't use (full health, full ammo) stay put; ammo caps at
 100 shells / 200 nails / 100 rockets. Bots collect items too and head for health when hurt. `pickups` lists what's ready.
+Pickups are drawn as procedurally painted pixel-art sprites (no image files): a distinct silhouette for each of the eight guns, a first-aid case, and shells / nails / rockets / cells / slugs, each on a coloured glow that matches its light. They bob over a floor pad and always face the camera; `r_plain 1` swaps them back to flat coloured cubes.
 
 ## Splash screen and menu
 
